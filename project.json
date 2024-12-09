@@ -1,0 +1,10 @@
+{
+  "name": "WebSocket控件查看器",
+  "main": "WebSocket控件查看器.js",
+  "ignore": [
+      "build"
+  ],
+  "packageName": "com.tony.ws.widgets",
+  "versionName": "1.0.0",
+  "versionCode": 1
+}
