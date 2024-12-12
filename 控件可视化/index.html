@@ -2,7 +2,7 @@
  * @Author: TonyJiangWJ
  * @Date: 2022-10-30 10:08:31
  * @Last Modified by: TonyJiangWJ
- * @Last Modified time: 2024-12-12 15:53:57
+ * @Last Modified time: 2024-12-12 23:52:20
  * @Description: github: https://github.com/TonyJiangWJ/AutoScriptBase
 -->
 <!DOCTYPE html>
@@ -539,6 +539,8 @@
     window.addEventListener('module-ready', (event) => {
       const { rerender } = event.detail;
       rerenderFunc = function (allItems, selectedItems, imageB64) {
+        allItems = allItems || []
+        selectedItems = selectedItems || []
         let rebuildSelectedObjects = regenerateObjects(allItems, selectedItems)
         // console.log('绘制对象列表：', rebuildSelectedObjects)
         rerender(rebuildSelectedObjects, imageB64)
@@ -673,14 +675,14 @@
           handler: function () {
             console.log('selectedItems changed:', this.selectedItems.length)//, this.selectedItems)
             if (this.items && this.items.length > 0 && this.selectedItems.length > 0) {
-              let _this = this
-              this.drawCanvas(_this.items, _this.selectedItems)
-              rerenderFunc(_this.items, _this.selectedItems, _this.imgBase64)
+              this.drawCanvas(this.items, this.selectedItems)
             } else {
               console.log('无可绘制节点', this.items)
               this.drawedObjects = []
               this.clearCanvas()
             }
+            // 无论有无 都重绘一遍 清空无效节点
+            rerenderFunc && rerenderFunc(this.items, this.selectedItems, this.imgBase64)
           }
         },
         uiobjects: {
@@ -879,6 +881,8 @@
             console.log('选中目标：', root)
             this.itemDetail = JSON.stringify(root, true)
           }
+          this.stackItems = [{ root: root ? root : JSON.parse(this.itemDetail) }].concat(this.getStackObjects())
+          this.showDetailIdx = 0
         },
         selectAll: function () {
           this.selectedItems = allKey
@@ -954,8 +958,6 @@
             this.itemId = findObjects[0].id
             if (showMenu) {
               this.lastFindId = this.itemId
-              this.showDetailIdx = 0
-              this.stackItems = [findObjects[0]].concat(this.getStackObjects())
             }
             this.$el.ctx.strokeStyle = '#ff0000'
             let { left, top, right, bottom } = findObjects[0].root.boundsInfo
