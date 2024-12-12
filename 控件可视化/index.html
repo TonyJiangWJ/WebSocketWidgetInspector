@@ -2,7 +2,7 @@
  * @Author: TonyJiangWJ
  * @Date: 2022-10-30 10:08:31
  * @Last Modified by: TonyJiangWJ
- * @Last Modified time: 2024-12-12 12:00:55
+ * @Last Modified time: 2024-12-12 15:53:57
  * @Description: github: https://github.com/TonyJiangWJ/AutoScriptBase
 -->
 <!DOCTYPE html>
@@ -316,7 +316,7 @@
       // const canvas = document.createElement("canvas");
       canvas.width = width * 10;
       canvas.height = height * 10;
-      console.log('设置canvas 宽高', canvas.width, canvas.height)
+      // console.log('设置canvas 宽高', canvas.width, canvas.height)
       // const ctx = canvas.getContext("2d");
       // 清空 Canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -331,11 +331,11 @@
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
 
-      console.log('create rect with text:', text)
+      // console.log('create rect with text:', text)
       ctx.fillText(text, canvas.width / 2, canvas.height / 2);
       // 将canvas转图片 然后创建文理
       const dataURL = canvas.toDataURL('image/png'); // 转换为 PNG 图片
-      console.log(dataURL)
+      // console.log(dataURL)
       const texture = new THREE.TextureLoader().load(dataURL);
       // 创建纹理
       // const texture = new THREE.CanvasTexture(canvas);
@@ -423,7 +423,7 @@
     const group = new THREE.Group();
 
     function rerender (objects, imageBase64) {
-      console.log('绘制对象列表：', objects)
+      // console.log('绘制对象列表：', objects)
       // 设置偏移 使左上角顶点位于 0,0,0
       group.position.set(-deviceWidth / 10 / 2, deviceHeight / 10 / 2, 0);
       clearGroup(group)
@@ -495,12 +495,12 @@
         return
       }
 
-      console.log('click point', event.clientX, event.clientY)
+      // console.log('click point', event.clientX, event.clientY)
       const target = document.getElementById("container");
       // 获取相对于页面的位置
       const rect = target.getBoundingClientRect();
 
-      console.log('render point', (event.clientX - rect.left), (event.clientY - rect.top))
+      // console.log('render point', (event.clientX - rect.left), (event.clientY - rect.top))
       mouse.x = ((event.clientX - rect.left) / render_width) * 2 - 1;
       mouse.y = -((event.clientY - rect.top) / render_height) * 2 + 1;
 
@@ -509,7 +509,7 @@
 
       if (intersects.length > 0) {
         const selectedObject = intersects[0].object;
-        console.log(selectedObject.objectInfo)
+        // console.log(selectedObject.objectInfo)
         if (selectedObject.objectInfo) {
           vueInstance.showDetail(selectedObject.objectInfo)
         }
@@ -540,7 +540,7 @@
       const { rerender } = event.detail;
       rerenderFunc = function (allItems, selectedItems, imageB64) {
         let rebuildSelectedObjects = regenerateObjects(allItems, selectedItems)
-        console.log('绘制对象列表：', rebuildSelectedObjects)
+        // console.log('绘制对象列表：', rebuildSelectedObjects)
         rerender(rebuildSelectedObjects, imageB64)
       }
 
