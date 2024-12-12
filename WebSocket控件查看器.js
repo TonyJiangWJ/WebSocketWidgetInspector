@@ -60,8 +60,11 @@ events.on('exit', function () {
 })
 
 
-function wrapResp (code, message, dataAppender) {
+function wrapResp (requestData, code, message, dataAppender) {
   let response = { code, message }
+  if (typeof requestData.callbackId != 'undefined') {
+    response.callbackId = requestData.callbackId
+  }
   if (typeof dataAppender === 'function') {
     dataAppender(response)
   }
@@ -70,19 +73,16 @@ function wrapResp (code, message, dataAppender) {
 
 const requestDispatcher = {
   widget_info: (conn, requestData, msg) => {
-    let getResult = buildWidgetResult()
-    conn.send(wrapResp(getResult.code, getResult.msg, (r) => {
-      r.widgetInfo = getResult.widgetInfo
-      r.imgBase64 = getResult.imgBase64
-      r.width = getResult.width
-      r.height = getResult.height
+    let getResult = buildWidgetResult(requestData)
+    conn.send(wrapResp(requestData, getResult.code, getResult.msg, (r) => {
+      Object.assign(r, getResult)
       r.type = 'widgetInfo'
     }))
   },
   operate: (conn, requestData, msg) => {
     console.log('执行脚本：', requestData.name, requestData.data, requestData.config)
     engines.execScript(requestData.name || 'tmp.js', requestData.data, requestData.config)
-    conn.send(wrapResp('success', '操作成功'))
+    conn.send(wrapResp(requestData, 'success', '操作成功'))
   }
 }
 
@@ -98,11 +98,11 @@ function handleRequest (conn, message) {
     if (handler) {
       handler(conn, requestData, message)
     } else {
-      conn.send(wrapResp('error', '当前操作类型未定义：' + requestData.type))
+      conn.send(wrapResp(requestData, 'error', '当前操作类型未定义：' + requestData.type))
     }
   } catch (e) {
     console.log('执行异常', e)
-    conn.send(wrapResp('error', '执行异常' + e))
+    conn.send(wrapResp(requestData, 'error', '执行异常' + e))
   }
 }
 
@@ -112,13 +112,18 @@ function handleRequest (conn, message) {
  * @return {Object} the result in JSON format, where the `code` field is 'success' if the result is successful, and 'error' if not.
  * The `widgetInfo` field contains the widget info, and `imgBase64` contains the image base64.
  */
-function buildWidgetResult () {
+function buildWidgetResult (requestData) {
+  if (auto.clearCache) {
+    console.log('清空控件缓存')
+    auto.clearCache()
+  }
   let widgetStart = new Date().getTime()
   let widgetResult = requestWidgetInfos()
-  console.log('获取控件信息耗时', new Date().getTime() - widgetStart)
+  let widgetCost = new Date().getTime() - widgetStart
+  console.log('获取控件信息耗时', widgetCost)
   let screen = null
   let captureStart = new Date().getTime()
-  if (automator.takeScreenshot) {
+  if (requestData.takeScreenshotByA11y && automator.takeScreenshot) {
     screen = automator.takeScreenshot()
   } else {
     screen = captureScreen()
@@ -131,28 +136,30 @@ function buildWidgetResult () {
   }
   let imgBase64 = null
   let convertStart = new Date().getTime()
+  let resultObj = {
+    captureCost: captureCost,
+    widgetCost: widgetCost,
+  }
   if (screen) {
     imgBase64 = images.toBase64(screen)
     console.log('图片转base64耗时', new Date().getTime() - convertStart)
+    resultObj.imgBase64 = imgBase64
+    resultObj.width = screen.width
+    resultObj.height = screen.height
+    resultObj.convertCost = new Date().getTime() - convertStart
   }
 
   if (widgetResult[0]) {
-    return {
+    return Object.assign(resultObj, {
       code: 'success',
       msg: '获取控件信息成功',
       widgetInfo: widgetResult[1],
-      imgBase64: imgBase64,
-      width: screen.width,
-      height: screen.height,
-    }
+    })
   } else {
-    return {
+    return Object.assign(resultObj, {
       code: 'error',
       msg: widgetResult[1],
-      imgBase64: imgBase64,
-      width: screen.width,
-      height: screen.height,
-    }
+    })
   }
 
 }

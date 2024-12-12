@@ -2,7 +2,7 @@
  * @Author: TonyJiangWJ
  * @Date: 2022-10-30 10:08:31
  * @Last Modified by: TonyJiangWJ
- * @Last Modified time: 2024-12-09 16:16:39
+ * @Last Modified time: 2024-12-12 12:00:55
  * @Description: github: https://github.com/TonyJiangWJ/AutoScriptBase
 -->
 <!DOCTYPE html>
@@ -22,6 +22,11 @@
     .v-treeview {
       overflow: scroll;
       height: 877px;
+    }
+
+    /* 避免宽度限制 导致层级过深导致UI层级不明显 */
+    .v-treeview-node__children {
+      width: 1200px;
     }
 
     .float_box_discover {
@@ -115,7 +120,7 @@
             </v-col>
           </v-row>
           <v-row dense no-gutters>
-            <v-col>
+            <v-col style="margin-top: -20px; margin-left: 5px;">
               设备宽高{{deviceWidth}} {{deviceHeight}} 总控件数：{{totalWidgets}} 筛选的：{{selectedItems?selectedItems.length:0}}
             </v-col>
           </v-row>
@@ -157,7 +162,7 @@
               </v-col>
             </v-row>
           </template>
-          <v-row v-if="connected">
+          <v-row v-if="connected" style="margin-top: -20px;">
             <v-col dense>
               <v-checkbox v-model="showExecuteCode" label="执行脚本" dense></v-checkbox>
             </v-col>
@@ -174,7 +179,8 @@
             </v-row>
             <v-row>
               <v-col>
-                <v-textarea v-model="executePath" label="执行路径" placeholder="输入脚本执行时所在的路径，以便可以通过require加载js 例如：/sdcard/脚本/MyScripts/" :rows="1" ></v-textarea>
+                <v-textarea v-model="executePath" label="执行路径"
+                  placeholder="输入脚本执行时所在的路径，以便可以通过require加载js 例如：/sdcard/脚本/MyScripts/" :rows="1"></v-textarea>
               </v-col>
             </v-row>
           </template>
@@ -196,25 +202,44 @@
               </v-treeview>
             </v-col>
             <v-col class="right-canvas">
-              <v-checkbox v-model="drawImageCanvas" label="显示图片"></v-checkbox>
-              <canvas id="myCanvas" width="400" height="889" style="border:1px solid #000000;">
-                您的浏览器不支持 HTML5 canvas 标签。
-              </canvas>
+              <v-checkbox v-model="draw3DInfo" label="显示3D图"></v-checkbox>
+              <div v-show="!draw3DInfo">
+                <div style="margin-top: -20px; margin-left: 5px;">
+                  <span>x: {{devicePos.x}} y: {{devicePos.y}} <span
+                      :style="{color: posBkColor, backgroundColor: posColor}">{{posColor}}</span></span>
+                </div>
+                <canvas id="myCanvas" width="400" height="889" style="border:1px solid #000000;">
+                  您的浏览器不支持 HTML5 canvas 标签。
+                </canvas>
+              </div>
+              <div v-show="draw3DInfo">
+                <div style="margin-top: -20px; margin-left: 5px;">
+                  <span>左键旋转，右键平移，中键缩放</span>
+                </div>
+                <div id="container" style="width: 600px;height: 900px;background-color: gray;"></div>
+              </div>
             </v-col>
           </v-row>
 
-          <v-row>
-            <v-col>
-              <v-textarea v-model="uiobjects" label="uiobjects.json内容" :rows="5" row-height="15">
-              </v-textarea>
+          <v-row v-show="connected" style="margin-top: -20px;">
+            <v-col dense>
+              <v-checkbox v-model="showObjectJson" label="显示控件JSON详情" dense></v-checkbox>
             </v-col>
           </v-row>
-          <v-row>
-            <v-col>
-              <v-textarea v-model="imgBase64" label="图片base64" :rows="5" row-height="15">
-              </v-textarea>
-            </v-col>
-          </v-row>
+          <template v-if="showObjectJson">
+            <v-row>
+              <v-col>
+                <v-textarea v-model="uiobjects" label="uiobjects.json内容" :rows="5" row-height="15">
+                </v-textarea>
+              </v-col>
+            </v-row>
+            <v-row>
+              <v-col>
+                <v-textarea v-model="imgBase64" label="图片base64" :rows="5" row-height="15">
+                </v-textarea>
+              </v-col>
+            </v-row>
+          </template>
         </v-container>
         <v-dialog v-model="dialog" width="700">
           <v-card style="padding: 2rem;">
@@ -240,172 +265,321 @@
 
   <script src="./js/vue.js"></script>
   <script src="./js/vuetify.js"></script>
-  <script>
-    let allKey = []
-    let allObject = []
-    let canvasWidth = 400
-    let deviceWidth = 1080
-    let deviceHeight = 2340
-    let idChecker = new Set()
-    let packageName = null
-    let columns = [
-      {
-        key: 'boundsInfo',
-        convert: item => {
-          let { left, right, top, bottom } = item.boundsInfo
-          return `rect:[${left},${top},${right},${bottom}] region:[${left},${top},${right - left},${bottom - top}]`
-        }
-      },
-      { key: 'desc' },
-      { key: 'text' },
-      { key: 'id' },
-      { key: 'depth' },
-      { key: 'indexInParent' },
-      { key: 'drawingOrder' },
-      { key: 'visibleToUser', isBoolean: true },
-      { key: 'clickable', isBoolean: true },
-      { key: 'longClickable', isBoolean: true },
-      { key: 'className' },
-      { key: 'packageName' },
-      { key: 'checkable', isBoolean: true },
-      { key: 'checked', isBoolean: true },
-      { key: 'focusable', isBoolean: true },
-      { key: 'focused', isBoolean: true },
-      { key: 'accessibilityFocused', isBoolean: true },
-      { key: 'selected', isBoolean: true },
-      { key: 'enabled', isBoolean: true },
-      { key: 'password', isBoolean: true },
-      { key: 'scrollable', isBoolean: true },
-      { key: 'row' },
-      { key: 'rowCount' },
-      { key: 'rowSpan' },
-      { key: 'column' },
-      { key: 'columnCount' },
-      { key: 'columnSpan' },
-    ]
-    function buildWithChild (childArray, filter) {
-      let rootNode = childArray[0]
-      columns.forEach(item => {
-        if (item.isBoolean) {
-          rootNode[item.key] = falseIfUndefined(item, rootNode[item.key])
-        }
-        if (item.key == 'packageName') {
-          if (typeof rootNode.packageName == "undefined") {
-            rootNode.packageName = packageName
-          } else {
-            packageName = rootNode.packageName
-          }
-        }
-      })
-      // 用于过滤bounds信息
-      rootNode.bounds = function () {
-        return new BoundsInfo(rootNode.boundsInfo)
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.171.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.171.0/examples/jsm/"
       }
-      if (typeof filter != "undefined" && !filter(rootNode, childArray)) {
-        console.log('过滤无效节点')
-        return null
-      }
-      allObject.push(rootNode)
-      let name = ''
-      if (rootNode.id) {
-        name += ' id:' + rootNode.id
-      }
-      if (rootNode.content) {
-        name += ` [${!!rootNode.desc ? 'desc' : 'text'}]:${rootNode.content}`
-      }
-      if (rootNode.boundsInfo) {
-        let bounds = rootNode.boundsInfo
-        name += ` bounds: [${bounds.left}, ${bounds.top} - ${bounds.right}, ${bounds.bottom}]`
-      }
-      let { left, top, right, bottom } = rootNode.boundsInfo
-      let root = {
-        open: true,
-        root: rootNode,
-        id: `${rootNode.depth}-${rootNode.indexInParent}_${rootNode.id ? rootNode.id : ''}[${left}_${top}_${right}_${bottom}]`,
-        name,
-        visible: rootNode.visible,
-        children: []
-      }
-      while (idChecker.has(root.id)) {
-        console.error('id 重复 ', root.id)
-        root.id += 'x'
-      }
-      idChecker.add(root.id)
-      allKey.push(root.id)
-      if (childArray.length > 1) {
-        let i = 0
-        for (let i = 1; i < childArray.length; i++) {
-          let child = buildWithChild(childArray[i], filter)
-          if (child) {
-            root.children.push(child)
-          }
-        }
-        // console.log(root.children)
-        root.children = root.children.sort((a, b) => {
-          let idxA = a.root.indexInParent
-          let idxB = b.root.indexInParent
-          return idxA - idxB
-        })
-      }
-      // this.$refs.treeNode.updateAll()
-      return root
-    }
-
-    function findOpenedParent (root, selectedCache) {
-      let opened = []
-      findOpened(root, selectedCache, opened)
-      return opened
-    }
-
-    function findOpened (root, selectedCache, opened) {
-      if (selectedCache.has(root.id)) {
-        opened.push(root.id)
-        return true
-      }
-      if (!root.children || root.children.length <= 0) {
-        return false
-      }
-      let hasChild = false
-      for (let i = 0; i < root.children.length; i++) {
-        let child = root.children[i]
-        if (selectedCache.has(child.id)) {
-          opened.push(root.id)
-          hasChild = true
-        }
-        if (findOpened(child, selectedCache, opened)) {
-          opened.push(root.id)
-          hasChild = true
-        }
-      }
-      return hasChild
-    }
-    function falseIfUndefined (item, value) {
-      if (typeof value !== "undefined") {
-        return value
-      }
-      if (item.isBoolean) {
-        return false
-      }
-      return undefined
     }
   </script>
+  <script src="./js/uiobject-helper.js"></script>
+  <script src="./js/ws-helper.js"></script>
 
+  <script type="module">
+
+    const render_width = 600
+    const render_height = 900
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    // Initialize scene, camera, and renderer
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(50, render_width / render_height, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer();
+    renderer.setSize(render_width, render_height);
+
+    document.getElementById('container').appendChild(renderer.domElement);
+    camera.position.set(0, 0, 350);
+    camera.lookAt(0, 0, 0)
+    // Add OrbitControls for interaction
+    const controls = new OrbitControls(camera, renderer.domElement);
+    // 启用平移功能
+    controls.enablePan = true;
+
+    // 设置平移速度（可选）
+    controls.panSpeed = 1.0;
+
+    // 默认情况下，按住鼠标右键可以平移
+    // 可以通过设置 controls.mouseButtons 来自定义操作按钮
+    controls.mouseButtons = {
+      LEFT: THREE.MOUSE.ROTATE,   // 左键旋转
+      MIDDLE: THREE.MOUSE.DOLLY,  // 中键缩放
+      RIGHT: THREE.MOUSE.PAN      // 右键平移
+    };
+    controls.update();
+    // // 创建一个共享的 Canvas
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    // 函数：为矩形生成带文本的纹理 TODO 文字显示效果太差
+    function createTextTexture (text, width, height) {
+      // 创建一个 Canvas
+      // const canvas = document.createElement("canvas");
+      canvas.width = width * 10;
+      canvas.height = height * 10;
+      console.log('设置canvas 宽高', canvas.width, canvas.height)
+      // const ctx = canvas.getContext("2d");
+      // 清空 Canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // 绘制背景
+      ctx.fillStyle = "white";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // 绘制文本
+      ctx.fillStyle = "black";
+      ctx.font = "30px SimSun";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+
+      console.log('create rect with text:', text)
+      ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+      // 将canvas转图片 然后创建文理
+      const dataURL = canvas.toDataURL('image/png'); // 转换为 PNG 图片
+      console.log(dataURL)
+      const texture = new THREE.TextureLoader().load(dataURL);
+      // 创建纹理
+      // const texture = new THREE.CanvasTexture(canvas);
+      return texture
+    }
+    // Function to create a rectangle
+    function createRectangle (width, height, depth, color, opacity, text) {
+      const geometry = new THREE.BoxGeometry(width, height, depth);
+      let material = new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,   // 启用透明度
+        opacity: opacity || 0.8         // 设置透明度（0为完全透明，1为完全不透明）
+      });
+      if (text) {
+        const texture = createTextTexture(text, width, height)
+
+        // 设置纹理的重复和模式
+        texture.wrapS = THREE.ClampToEdgeWrapping; // 水平方向
+        texture.wrapT = THREE.ClampToEdgeWrapping; // 垂直方向
+        texture.minFilter = THREE.LinearFilter; // 缩小纹理时的过滤
+        texture.magFilter = THREE.LinearFilter; // 放大纹理时的过滤
+        material = new THREE.MeshBasicMaterial({
+          color,
+          map: texture
+        });
+      }
+
+      return new THREE.Mesh(geometry, material);
+    }
+
+    function createRectOutline (width, height, depth, color, opacity) {
+      // 矩形边框
+      const rectGeometry = new THREE.PlaneGeometry(width, height, depth); // 创建一个矩形
+      const edges = new THREE.EdgesGeometry(rectGeometry); // 提取矩形边框
+      const material = new THREE.LineBasicMaterial({ color, opacity: opacity || 0.8 }); // 线条材质
+      const rectOutline = new THREE.LineSegments(edges, material); // 创建线段
+      return rectOutline
+    }
+
+    function createRectangleWithImage (width, height, depth, base64) {
+
+      const geometry = new THREE.BoxGeometry(width, height, depth);
+      // 创建 Base64 图片纹理
+      const base64Image = base64; // 替换为你的 Base64 图片数据
+      const texture = new THREE.TextureLoader().load(base64Image);
+
+      // 设置纹理的重复和模式
+      texture.wrapS = THREE.ClampToEdgeWrapping; // 水平方向
+      texture.wrapT = THREE.ClampToEdgeWrapping; // 垂直方向
+      texture.minFilter = THREE.LinearFilter; // 缩小纹理时的过滤
+      texture.magFilter = THREE.LinearFilter; // 放大纹理时的过滤
+
+      // 创建材质并应用纹理
+      const material = new THREE.MeshBasicMaterial({ map: texture });
+
+      // 创建矩形网格
+      return new THREE.Mesh(geometry, material);
+    }
+
+    function clearGroup (group) {
+      while (group.children.length > 0) {
+        const child = group.children[0]; // 获取第一个子对象
+
+        // 释放几何体资源
+        if (child.geometry) {
+          child.geometry.dispose();
+        }
+
+        // 释放材质资源
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            // 如果材质是数组，逐一释放
+            child.material.forEach((mat) => mat.dispose());
+          } else {
+            child.material.dispose();
+          }
+        }
+
+        // 从 Group 中移除子对象
+        group.remove(child);
+      }
+    }
+
+    // Create rectangles and add them to a group
+    const group = new THREE.Group();
+
+    function rerender (objects, imageBase64) {
+      console.log('绘制对象列表：', objects)
+      // 设置偏移 使左上角顶点位于 0,0,0
+      group.position.set(-deviceWidth / 10 / 2, deviceHeight / 10 / 2, 0);
+      clearGroup(group)
+
+      const rect1 = createRectangleWithImage(deviceWidth / 10, deviceHeight / 10, 1, imageBase64); // Blue background rectangle
+
+      const rect0 = createRectangle(1, 1, 1, 0xff0000, 1); // Red rectangle
+      rect0.position.set(0, 0, -1);
+      group.add(rect0)
+      rect1.position.set(deviceWidth / 10 / 2, -deviceHeight / 10 / 2, 0.1);
+      group.add(rect1)
+
+      objects.forEach(object => {
+        // "boundsInfo":{"bottom":2340,"left":0,"right":1080,"top":0}
+        interRender(object)
+      })
+    }
+
+
+
+    // const rect2 = createRectangle(108, 234, 1, 0x00ff00)
+    // rect2.position.set(12.6/2, -80.8/2, 12)
+    // group.add(rect2)
+    function interRender (object) {
+      if (object instanceof Array) {
+        object.forEach(obj => interRender(obj))
+      } else {
+        let boundsInfo = object.boundsInfo
+        if (!boundsInfo) {
+          console.log('未找到boundsInfo 跳过处理：', object)
+          return
+        }
+        let width = (boundsInfo.right - boundsInfo.left) * 0.1, height = (boundsInfo.bottom - boundsInfo.top) * 0.1
+        let rect = null
+        let renderColor = object.renderColor || Math.floor(Math.random() * 0xFFFFFF)
+        object.renderColor = renderColor
+        if (!object.content) {
+          if (object.clickable == true) {
+            rect = createRectangle(width, height, 1, renderColor, 0.3)
+          } else {
+            rect = createRectOutline(width, height, 1, renderColor, 0.8)
+          }
+        } else {
+          rect = createRectangle(width, height, 1, renderColor, 0.7, object.content)
+        }
+
+        // console.log('put rect', (boundsInfo.right - boundsInfo.left) * 0.1, (boundsInfo.bottom - boundsInfo.top) * 0.1, ' at ', boundsInfo.left * 0.1, boundsInfo.top * 0.1, 2 * object.depth)
+        rect.position.set(boundsInfo.left * 0.1 + width / 2, -(boundsInfo.top * 0.1 + height / 2), 1 * object.depth)
+        rect.objectInfo = object
+        group.add(rect)
+      }
+    }
+
+    scene.add(group);
+
+    // Add Raycaster for mouse interaction
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    let clickDownStart = 0
+
+    document.getElementById('container').addEventListener("mousedown", (event) => {
+      clickDownStart = new Date()
+    })
+
+    document.getElementById('container').addEventListener("mouseup", (event) => {
+      if (new Date() - clickDownStart > 150) {
+        console.log('点击间隔太久', (new Date() - clickDownStart))
+        return
+      }
+
+      console.log('click point', event.clientX, event.clientY)
+      const target = document.getElementById("container");
+      // 获取相对于页面的位置
+      const rect = target.getBoundingClientRect();
+
+      console.log('render point', (event.clientX - rect.left), (event.clientY - rect.top))
+      mouse.x = ((event.clientX - rect.left) / render_width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / render_height) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(group.children);
+
+      if (intersects.length > 0) {
+        const selectedObject = intersects[0].object;
+        console.log(selectedObject.objectInfo)
+        if (selectedObject.objectInfo) {
+          vueInstance.showDetail(selectedObject.objectInfo)
+        }
+        // selectedObject.material.color.set(0x0000ff); // Change color to blue on click
+      }
+    })
+    // document.getElementById('container').addEventListener("click", (event) => {
+
+    // });
+
+    // Render loop
+    function animate () {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // 触发事件，暴露模块方法
+    window.dispatchEvent(new CustomEvent('module-ready', {
+      detail: { rerender }
+    }));
+  </script>
   <script>
-    let ws = null;          // WebSocket 实例
-    let retryTimeout = 1000; // 初始重连间隔（毫秒）
-    let maxRetryTimeout = 30000; // 最大重连间隔
-    let isConnected = false; // WebSocket 连接状态
+    let rerenderFunc = null
+    // 非模块代码
+    window.addEventListener('module-ready', (event) => {
+      const { rerender } = event.detail;
+      rerenderFunc = function (allItems, selectedItems, imageB64) {
+        let rebuildSelectedObjects = regenerateObjects(allItems, selectedItems)
+        console.log('绘制对象列表：', rebuildSelectedObjects)
+        rerender(rebuildSelectedObjects, imageB64)
+      }
 
-    new Vue({
+      /**
+       * 根据所有节点列表和选中数组构建用于渲染的矩形列表
+       */
+      function regenerateObjects (allItems, selectedItems) {
+        let tmpSelectCache = new Set()
+        selectedItems.forEach(key => tmpSelectCache.add(key))
+        return buildWithChildren(allItems, tmpSelectCache)
+
+        function buildWithChildren (items, selectedCahce) {
+          return items.map(item => {
+            let objectList = []
+            if (selectedCahce.has(item.id)) {
+              objectList.push(item.root)
+            }
+            if (item.children && item.children.length > 0) {
+              objectList.push(buildWithChildren(item.children, selectedCahce))
+            }
+            return objectList
+          })
+        }
+      }
+    });
+
+    const vueInstance = new Vue({
       el: '#app',
       vuetify: new Vuetify(),
       data () {
         return {
+          drawImageCanvas: true,
+          draw3DInfo: false,
+          showObjectJson: false,
           showExecuteCode: false,
           executeCode: '',
           executePath: '',
-          wsServerUrl: 'ws://192.168.254.238:8212',
-          // wsServerUrl: 'ws://192.168.2.104:8212',
+          // wsServerUrl: 'ws://192.168.254.238:8212',
+          wsServerUrl: 'ws://192.168.2.104:8212',
           connectStatus: '未连接',
           requesting: false,
           connecting: false,
@@ -433,6 +607,8 @@
           winPos: { x: 0, y: 0 },
           devicePos: { x: 0, y: 0 },
           findTargetObj: false,
+          posColor: '',
+          posBkColor: '',
           clearId: null,
           itemId: null,
           lastFindId: null,
@@ -499,6 +675,7 @@
             if (this.items && this.items.length > 0 && this.selectedItems.length > 0) {
               let _this = this
               this.drawCanvas(_this.items, _this.selectedItems)
+              rerenderFunc(_this.items, _this.selectedItems, _this.imgBase64)
             } else {
               console.log('无可绘制节点', this.items)
               this.drawedObjects = []
@@ -538,79 +715,48 @@
             return
           }
           this.connecting = true
-          ws = new WebSocket(this.wsServerUrl);
-          let _this = this
-          // 重连逻辑
-          function reconnectWebSocket () {
-            if (isConnected || !ws) return; // 如果已经连接则不重连
-
-            setTimeout(() => {
-              console.log(`Retrying WebSocket connection...`);
-              _this.connectServer(); // 再次初始化连接
-              retryTimeout = Math.min(retryTimeout * 2, maxRetryTimeout); // 指数增长重连时间，限制最大值
-            }, retryTimeout);
-          }
-          // 连接成功
-          ws.onopen = () => {
-            _this.connecting = true
-            isConnected = true;
-            retryTimeout = 1000; // 重置重连间隔
-            _this.connectStatus = 'ready'
-            console.log("WebSocket connection opened");
-          };
-
-          // 接收消息
-          ws.onmessage = (event) => {
-            console.log("Message from server:", event.data);
-            // 可以在此处理接收到的消息
-            // addMessage("Message from server:" + event.data, 'orange')
-            let result = JSON.parse(event.data)
-            _this.requesting = false
-            if (result.code == 'success') {
-              if (result.type == 'widgetInfo') {
-                _this.deviceHeight = result.height
-                _this.deviceWidth = result.width
-                _this.uiobjects = result.widgetInfo
-                _this.imgBase64 = 'data:image/png;base64,' + result.imgBase64
-                setTimeout(() => {
-                  _this.selectAll()
-                }, 500)
-              }
-            }
-          };
-
-          // 连接关闭
-          ws.onclose = () => {
-            _this.requesting = false
-            isConnected = false;
-            _this.connectStatus = 'disconnected'
-            console.log("WebSocket connection closed. Retrying...");
-            reconnectWebSocket();
-          };
-
-          // 连接出错
-          ws.onerror = (error) => {
-            _this.requesting = false
-            isConnected = false;
-            _this.connectStatus = 'disconnected'
-            console.error("WebSocket error:", error);
-            ws.close(); // 主动关闭以触发重连逻辑
-          };
+          createWebsocket(this.wsServerUrl, this)
         },
         requestWidgetInfo: function () {
           if (!this.connected || this.requesting) {
             return
           }
           this.requesting = true
-          ws.send(JSON.stringify({ 'type': 'widget_info' }))
+          let _this = this
+
+          wsApi.request('widget_info', {}).then(resp => {
+            _this.requesting = false
+            console.log('widget info from server:', JSON.stringify(resp, (key, value) => {
+              // 过滤长字段 不在日志中打印
+              if (key == 'widgetInfo' || key == 'imgBase64') {
+                return undefined
+              }
+              return value
+            }))
+            console.log('截图耗时：', resp.captureCost, '控件耗时：', resp.widgetCost, '图像转换耗时：', resp.convertCost)
+            if (resp.code == 'success') {
+              _this.deviceHeight = resp.height
+              _this.deviceWidth = resp.width
+              _this.uiobjects = JSON.stringify(JSON.parse(resp.widgetInfo), null, 2)
+              _this.imgBase64 = 'data:image/png;base64,' + resp.imgBase64
+              setTimeout(() => {
+                _this.selectAll()
+              }, 500)
+            } else {
+              console.error('请求控件信息异常', resp.msg)
+            }
+          })
         },
         sendCode: function () {
           if (!this.connected || this.requesting || !this.executeCode) {
             return
           }
-          ws.send(JSON.stringify({ type: 'operate', data: this.executeCode, name: 'tmp', config: {
-            path: this.executePath
-          }}))
+          this.requesting = true
+          wsApi.request('operate', {
+            data: this.executeCode, name: 'tmp', config: {
+              path: this.executePath
+            }
+          }).then(() => this.requesting = false)
         },
         buildItems: function (callback) {
           // debugger
@@ -730,6 +876,7 @@
         showDetail: function (root) {
           this.dialog = true
           if (root) {
+            console.log('选中目标：', root)
             this.itemDetail = JSON.stringify(root, true)
           }
         },
@@ -788,7 +935,7 @@
         findTarget: async function (x, y, showMenu) {
           let realX = x * deviceWidth / canvasWidth
           let realY = y * deviceWidth / canvasWidth
-          console.log('实际坐标：', `${realX}, ${realY}`)
+          // console.log('实际坐标：', `${realX}, ${realY}`)
           let findObjects = this.drawedObjects.filter(({ root: r }) => {
             let { left, top, right, bottom } = r.boundsInfo
             r.distance = realX - left + right - realX + bottom - realY + realY - top
@@ -827,19 +974,17 @@
           }
           if (ws && isConnected && detail) {
             let { left, top, right, bottom } = detail.boundsInfo
-            ws.send(JSON.stringify({
-              type: 'operate',
+            wsApi.request('operate', {
               data: ((x, y) => {
                 return `(() => {
                   //toastLog('点击位置：${x} ${y}')
                   automator.click(${x}, ${y})
               })()`
-              })(left + (right - left) / 2, top + (bottom - top) / 2).toString(),
-            }))
-            setTimeout(() => {
-              this.requestWidgetInfo()
-            }, 500)
-
+              })(left + (right - left) / 2, top + (bottom - top) / 2).toString()
+            })
+              .then(() => setTimeout(() => {
+                this.requestWidgetInfo()
+              }, 500))
             this.itemId == null
             this.lastFindId = null
             this.findTargetObj = false
@@ -847,18 +992,17 @@
         },
         clickPos: function () {
           if (ws && isConnected) {
-            ws.send(JSON.stringify({
-              type: 'operate',
+            wsApi.request('operate', {
               data: ((x, y) => {
                 return `(() => {
                   //toastLog('点击位置：${x} ${y}')
                   automator.click(${x}, ${y})
               })()`
-              })(this.devicePos.x, this.devicePos.y).toString(),
-            }))
-            setTimeout(() => {
-              this.requestWidgetInfo()
-            }, 500)
+              })(this.devicePos.x, this.devicePos.y).toString()
+            })
+              .then(() => setTimeout(() => {
+                this.requestWidgetInfo()
+              }, 500))
 
             this.itemId == null
             this.lastFindId = null
@@ -875,6 +1019,7 @@
               let idx = this.selectedItems.indexOf(remove.id)
               if (idx > -1) {
                 console.log('remove', remove.id, 'idx', idx)
+
                 this.selectedItems.splice(idx, 1)
               }
             })
@@ -928,6 +1073,25 @@
           _this.clearId = setTimeout(() => {
             _this.findTarget(x, y)
           }, 5)
+          // 显示悬浮窗时不再动态提取
+          if (_this.findTargetObj) {
+            return
+          }
+          let scale = deviceWidth / canvasWidth
+          let realX = Math.ceil(x * scale)
+          let realY = Math.ceil(y * scale)
+          _this.devicePos = { x: realX, y: realY }
+          function getColorHexAt (x, y) {
+            const imageData = _this.$el.ctx.getImageData(x, y, 1, 1); // 获取 (x, y) 像素颜色
+            const [r, g, b] = imageData.data; // 提取 RGB 值
+            const toHex = (value) => value.toString(16).padStart(2, "0"); // 转换为两位十六进制
+            return [`#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase(),
+            `#${toHex(255 - r)}${toHex(255 - g)}${toHex(255 - b)}`.toUpperCase(),
+            ]; // 返回 HEX 格式
+          }
+          let colorstrs = getColorHexAt(x, y)
+          _this.posColor = colorstrs[0]
+          _this.posBkColor = colorstrs[1]
         }
         setTimeout(() => {
           _this.buildItems(_this.openAll)
@@ -966,288 +1130,6 @@
       }
     })
   </script>
-
-  <script>
-    function hasValidChild (childArray, func) {
-      if (!childArray || childArray.length < 1) {
-        return false
-      }
-      if (func(childArray[0])) {
-        return true
-      }
-      for (let i = 1; i < childArray.length; i++) {
-        if (hasValidChild(childArray[i], func)) {
-          return true
-        }
-      }
-      return false
-    }
-
-    function hasVisiableChild (childArray) {
-      if (!childArray || childArray.length < 1) {
-        return false
-      }
-      if (childArray[0].visible) {
-        return true
-      }
-      for (let i = 1; i < childArray.length; i++) {
-        if (hasVisiableChild(childArray[i])) {
-          return true
-        }
-      }
-      return false
-    }
-
-    function widthInScreen (x) {
-      return x >= 0 && x <= deviceWidth
-    }
-
-    function heightInScreen (y) {
-      return y >= 0 && y <= deviceHeight
-    }
-  </script>
-  <script>
-    function boundsInside (root, l, t, r, b) {
-      let { left, top, right, bottom } = root.boundsInfo
-      return left >= l && right <= r && top >= t && bottom <= b
-    }
-    function boundsContains (root, l, t, r, b) {
-      let { left, top, right, bottom } = root.boundsInfo
-      return left <= l && right >= r && top <= t && bottom >= b
-    }
-  </script>
-  <script>
-    function Selector (node) {
-      this.filters = []
-      this.bounds = function (l, t, r, b) {
-        this.filters.push(v => {
-          let { left, top, right, bottom } = root.boundsInfo
-          return left == l && top == t && right == r && bottom == b
-        })
-        return this
-      }
-      this.boundsInside = function (l, t, r, b) {
-        this.filters.push(v => boundsInside(v, l, t, r, b))
-        return this
-      }
-      this.boundsContains = function (l, t, r, b) {
-        this.filters.push(v => boundsContains(v, l, t, r, b))
-        return this
-      }
-
-      this.depth = function (depth) {
-        this.filters.push(v => v.depth == depth)
-        return this
-      }
-
-      this.text = function (text) {
-        this.filters.push(v => v.text == text)
-        return this
-      }
-
-      this.textContains = function (text) {
-        this.filters.push(v => v.text && v.text.indexOf(text) > -1)
-        return this
-      }
-
-      this.textMatches = function (text) {
-        this.filters.push(v => v.text && new RegExp('^' + text + '$').test(v.text))
-        return this
-      }
-
-      this.textStartsWith = function (start) {
-        this.filters.push(v => v.text && v.text.startsWith(start))
-        return this
-      }
-
-      this.textEndsWith = function (end) {
-        this.filters.push(v => v.text && v.text.endsWith(end))
-        return this
-      }
-
-      this.desc = function (desc) {
-        this.filters.push(v => v.desc == desc)
-        return this
-      }
-
-      this.descContains = function (desc) {
-        this.filters.push(v => v.desc && v.desc.indexOf(desc) > -1)
-        return this
-      }
-
-      this.descMatches = function (desc) {
-        this.filters.push(v => v.desc && new RegExp('^' + desc + '$').test(v.desc))
-        return this
-      }
-
-      this.descStartsWith = function (start) {
-        this.filters.push(v => v.desc && v.desc.startsWith(start))
-        return this
-      }
-
-      this.descEndsWith = function (end) {
-        this.filters.push(v => v.desc && v.desc.endsWith(end))
-        return this
-      }
-
-      this.id = function (id) {
-        this.filters.push(v => v.id == id)
-        return this
-      }
-
-      this.idContains = function (id) {
-        this.filters.push(v => v.id && v.id.indexOf(id) > -1)
-        return this
-      }
-
-      this.idMatches = function (id) {
-        this.filters.push(v => v.id && new RegExp('^' + id + '$').test(v.id))
-        return this
-      }
-
-      this.idStartsWith = function (start) {
-        this.filters.push(v => v.id && v.id.startsWith(start))
-        return this
-      }
-
-      this.idEndsWith = function (end) {
-        this.filters.push(v => v.id && v.id.endsWith(end))
-        return this
-      }
-
-
-      this.className = function (className) {
-        this.filters.push(v => v.className == className)
-        return this
-      }
-
-      this.classNameContains = function (className) {
-        this.filters.push(v => v.className && v.className.indexOf(className) > -1)
-        return this
-      }
-
-      this.classNameMatches = function (className) {
-        this.filters.push(v => v.className && new RegExp('^' + className + '$').test(v.className))
-        return this
-      }
-
-      this.classNameStartsWith = function (start) {
-        this.filters.push(v => v.className && v.className.startsWith(start))
-        return this
-      }
-
-      this.classNameEndsWith = function (end) {
-        this.filters.push(v => v.className && v.className.endsWith(end))
-        return this
-      }
-      this.drawingOrder = function (check) {
-        this.filters.push(v => v.drawingOrder == check)
-        return this
-      }
-
-      this.clickable = function (check) {
-        if (typeof check === "undefined") {
-          check = true
-        }
-        this.filters.push(v => {
-          let result = v.clickable == check
-          if (result) {
-            // console.log('check?', check)
-            // console.log('clickable:', v.clickable)
-            // console.log("v：", JSON.stringify(v))
-            return true
-          }
-          return false
-        })
-        return this
-      }
-
-      this.longClickable = function (check) {
-        if (typeof check === "undefined") {
-          check = true
-        }
-        this.filters.push(v => v.longClickable == check)
-        return this
-      }
-
-      this.checkable = function (check) {
-        if (typeof check === "undefined") {
-          check = true
-        }
-        this.filters.push(v => v.checkable == check)
-        return this
-      }
-
-      this.selected = function (check) {
-        if (typeof check === "undefined") {
-          check = true
-        }
-        this.filters.push(v => v.selected == check)
-        return this
-      }
-
-      this.enabled = function (check) {
-        if (typeof check === "undefined") {
-          check = true
-        }
-        this.filters.push(v => v.enabled == check)
-        return this
-      }
-
-      this.scrollable = function (check) {
-        if (typeof check === "undefined") {
-          check = true
-        }
-        this.filters.push(v => v.scrollable == check)
-        return this
-      }
-
-      this.editable = function (check) {
-        if (typeof check === "undefined") {
-          check = true
-        }
-        this.filters.push(v => v.editable == check)
-        return this
-      }
-
-      this.visibleToUser = function (check) {
-        if (typeof check === "undefined") {
-          check = true
-        }
-        this.filters.push(v => v.visibleToUser == check)
-        return this
-      }
-
-      this.filter = function (func) {
-        this.filters.push(func)
-        return this
-      }
-
-      this.find = function () {
-        if (this.filters.length > 0) {
-          for (let i = 0; i < this.filters.length; i++) {
-            let f = this.filters[i]
-            if (!f(node)) {
-              return false
-            }
-          }
-        }
-        return true
-      }
-    }
-
-    function BoundsInfo (boundsInfo) {
-      this.left = boundsInfo.left
-      this.top = boundsInfo.top
-      this.right = boundsInfo.right
-      this.bottom = boundsInfo.bottom
-      this.width = () => boundsInfo.right - boundsInfo.left
-      this.height = () => boundsInfo.bottom - boundsInfo.top
-      this.centerX = () => (boundsInfo.right + boundsInfo.left) / 2
-      this.centerY = () => (boundsInfo.bottom + boundsInfo.top) / 2
-    }
-  </script>
-
 
 </body>
 
