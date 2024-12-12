@@ -28,6 +28,7 @@
   ![界面参考](./resources/demo.png)
   ![界面参考2](./resources/demo2.png)
   ![界面参考3](./resources/demo3.png)
+  ![界面参考gif](./resources/demo_gif.gif)
 
 ## 待完成功能
 
