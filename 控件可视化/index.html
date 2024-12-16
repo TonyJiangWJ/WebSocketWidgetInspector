@@ -1,9 +1,9 @@
 <!--
  * @Author: TonyJiangWJ
- * @Date: 2022-10-30 10:08:31
+ * @Date: 2024-12-09 16:08:31
  * @Last Modified by: TonyJiangWJ
- * @Last Modified time: 2024-12-12 23:52:20
- * @Description: github: https://github.com/TonyJiangWJ/AutoScriptBase
+ * @Last Modified time: 2024-12-16 18:22:40
+ * @Description: github: https://github.com/TonyJiangWJ/WebSocketWidgetInspector
 -->
 <!DOCTYPE html>
 <html>
@@ -21,7 +21,7 @@
 
     .v-treeview {
       overflow: scroll;
-      height: 877px;
+      min-height: 788px;
     }
 
     /* 避免宽度限制 导致层级过深导致UI层级不明显 */
@@ -94,17 +94,20 @@
           <div v-show="findTargetObj" class="float_box_discover"
             :style="{ 'left': winPos.x +'px', 'top': winPos.y+'px' }">
             <v-list>
-              <v-list-item v-if="connected">
-                <v-btn elevation="2" @click="clickCenter(null)">点击中心点</v-btn>
-              </v-list-item>
-              <v-list-item v-if="connected">
-                <v-btn elevation="2" @click="clickPos(null)">点击当前坐标</v-btn>
-              </v-list-item>
               <v-list-item>
                 <v-btn elevation="2" @click="showDetail(null)">查看详情</v-btn>
               </v-list-item>
               <v-list-item>
                 <v-btn elevation="2" @click="removeItem(null)">排除</v-btn>
+              </v-list-item>
+              <v-list-item>
+                <v-btn elevation="2" @click="openTarget(null)">在树中显示</v-btn>
+              </v-list-item>
+              <v-list-item v-if="connected">
+                <v-btn elevation="2" @click="clickCenter(null)">点击中心点</v-btn>
+              </v-list-item>
+              <v-list-item v-if="connected">
+                <v-btn elevation="2" @click="clickPos(null)">点击当前坐标</v-btn>
               </v-list-item>
             </v-list>
           </div>
@@ -114,14 +117,14 @@
               <v-text-field label="服务地址" v-model="wsServerUrl"></v-text-field>
             </v-col>
             <v-col>
-
               <v-btn v-if="!connected" elevation="2" @click="connectServer()" :loading="connecting">连接服务</v-btn>
               <v-btn v-if="connected" elevation="2" @click="requestWidgetInfo()" :loading="requesting">获取当前控件信息</v-btn>
+              <v-btn elevation="2" @click="loadHisInfo()">加载历史数据</v-btn>
             </v-col>
           </v-row>
           <v-row dense no-gutters>
             <v-col style="margin-top: -20px; margin-left: 5px;">
-              设备宽高{{deviceWidth}} {{deviceHeight}} 总控件数：{{totalWidgets}} 筛选的：{{selectedItems?selectedItems.length:0}}
+              设备宽高：{{deviceWidth}} {{deviceHeight}} 总控件数：{{totalWidgets}} 筛选的：{{selectedItems?selectedItems.length:0}}
             </v-col>
           </v-row>
           <v-row justify="start" no-gutters dense>
@@ -130,6 +133,9 @@
             </v-col>
             <v-col>
               <v-checkbox v-model="hasContent" label="只显示有内容节点[id,desc,text]" dense></v-checkbox>
+            </v-col>
+            <v-col>
+              <v-checkbox v-model="clickableOnly" label="只显示clickable节点" dense></v-checkbox>
             </v-col>
             <v-col>
               <v-checkbox v-model="inScreen" label="只显示屏幕内节点" dense></v-checkbox>
@@ -193,11 +199,14 @@
           </v-row>
           <v-row>
             <v-col class="left-tree">
-              <v-treeview ref="treeNode" open-all hoverable selectable dense :items="items" :open.sync="opened"
-                selection-type="independent" v-model="selectedItems" @update:active="handleActive">
+              <v-switch v-model="selectionIndependent" flat
+                :label="`选择模式: ${selectionIndependent?'独立节点':'叶子节点'}`"></v-switch>
+              <v-treeview ref="treeNode" hoverable selectable dense :items="items" :open="opened" :active="treeActive"
+                :selection-type="selectionType" v-model="treeSelectedItems" :key="selectionType"
+                @update:open="handleOpen" @update:active="handleActive" :style="{height: treeHeight}">
                 <template v-slot:label="{ item }">
                   <span :style="{color: item.root.visible?'black':'gray'}"
-                    @click="showDetail(item.root)">{{item.name}}</span>
+                    @click="showDetail(item)">{{item.name}}</span>
                 </template>
               </v-treeview>
             </v-col>
@@ -242,14 +251,19 @@
           </template>
         </v-container>
         <v-dialog v-model="dialog" width="700">
-          <v-card style="padding: 2rem;">
-            <div v-for="(item, i) in uiObjectItems" :key="i">
-              <v-row>
-                <v-col cols="4">{{item.label}}:</v-col>
-                <v-col cols="8">{{item.value}}</v-col>
-              </v-row>
+          <v-card-title class="text-h5 grey lighten-2">
+            控件详情
+          </v-card-title>
+          <v-card>
+            <div style="padding: 2rem;max-height: 600px;overflow-y: scroll;">
+              <div v-for="(item, i) in uiObjectItems" :key="i">
+                <v-row>
+                  <v-col cols="4">{{item.label}}:</v-col>
+                  <v-col cols="8">{{item.value}}</v-col>
+                </v-row>
+              </div>
             </div>
-            <v-card-actions v-if="stackItems.length > 1">
+            <v-card-actions v-if="stackItems.length > 1" style="background-color: white;">
               <v-spacer>总堆叠数：{{showDetailIdx+1}}/{{stackItems.length}}</v-spacer>
               <v-btn color="primary" text :disabled="showDetailIdx==0" @click="showDetailIdx--">
                 上一个
@@ -258,7 +272,66 @@
                 下一个
               </v-btn>
             </v-card-actions>
+            <v-card-actions style="background-color: white;justify-content: right;">
+              <div style="padding-bottom: 16px;padding-right: 5px;">
+                <v-btn @click="() => {openTarget(itemId);dialog=false}">在树中显示</v-btn>
+                <v-btn @click="() => {clickCenter();dialog=false}">点击中心点</v-btn>
+                <v-btn @click="removeItem()">排除</v-btn>
+                <v-btn @click="()=>dialog=false" color="primary">关闭</v-btn>
+              </div>
+            </v-card-actions>
           </v-card>
+
+        </v-dialog>
+
+        <v-dialog v-model="hisDialog" width="700">
+          <v-card>
+            <v-card-title class="text-h5 grey lighten-2">
+              历史控件记录，目前最多保存{{maxHisData}}条
+            </v-card-title>
+
+            <v-list style="max-height: 500px;overflow-y: scroll;">
+              <v-list-item v-for="hisObject in hisObjects" :key="hisObject.timestamp"
+                style="border-bottom: solid 1px rgba(0,0,0,0.12)" @click="renderHisObject(hisObject)">
+                <v-list-item-content style="display: block;">
+                  <div style="display: inline; float: left; padding: 5px;padding-right: 20px;">
+                    <img :src="hisObject.smallImg" style="max-height: 40px;" />
+                  </div>
+                  <div style="display: inline; float: left;">
+                    <v-list-item-title>{{hisObject.timestamp|stamp2Str}}</v-list-item-title>
+                    <v-list-item-subtitle>
+                      <div>
+                        <span>
+                          总控件数：{{hisObject.totalWidgets}}
+                        </span>
+                        <span>
+                          设备宽高：{{hisObject.deviceWidth}} {{hisObject.deviceHeight}}
+                        </span>
+                      </div>
+                      <div>
+                        <span>包名：{{hisObject.packageName}}</span>
+                      </div>
+                    </v-list-item-subtitle>
+                  </div>
+                  <div style="display: inline;float: right;">
+                    <v-btn color="primary" text @click.stop="() => {deleteData(hisObject.timestamp)}">
+                      删除
+                    </v-btn>
+                  </div>
+                </v-list-item-content>
+              </v-list-item>
+            </v-list>
+
+            <v-divider></v-divider>
+
+            <v-card-actions>
+              <v-spacer></v-spacer>
+              <v-btn color="primary" text @click="hisDialog = false">
+                关闭
+              </v-btn>
+            </v-card-actions>
+          </v-card>
+
         </v-dialog>
     </v-app>
   </div>
@@ -273,18 +346,28 @@
       }
     }
   </script>
+  <!-- 跨域无法加载
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./js/three@0.171.0/build/three.module.js",
+        "three/addons/": "./js/three@0.171.0/examples/jsm/"
+      }
+    }
+  </script> -->
   <script src="./js/uiobject-helper.js"></script>
   <script src="./js/ws-helper.js"></script>
+  <script src="./js/indexedDbhelper.js"></script>
 
   <script type="module">
 
     const render_width = 600
-    const render_height = 900
+    const render_height = 1200
     import * as THREE from 'three';
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
     // Initialize scene, camera, and renderer
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(50, render_width / render_height, 0.1, 1000);
+    const camera = new THREE.PerspectiveCamera(50, render_width / render_height, 0.1, 2000);
     const renderer = new THREE.WebGLRenderer();
     renderer.setSize(render_width, render_height);
 
@@ -436,9 +519,11 @@
       rect1.position.set(deviceWidth / 10 / 2, -deviceHeight / 10 / 2, 0.1);
       group.add(rect1)
 
+      let drawed = new Set()
+      let duplicatedDrawed = {}
       objects.forEach(object => {
         // "boundsInfo":{"bottom":2340,"left":0,"right":1080,"top":0}
-        interRender(object)
+        interRender(object, drawed, duplicatedDrawed)
       })
     }
 
@@ -447,32 +532,56 @@
     // const rect2 = createRectangle(108, 234, 1, 0x00ff00)
     // rect2.position.set(12.6/2, -80.8/2, 12)
     // group.add(rect2)
-    function interRender (object) {
-      if (object instanceof Array) {
-        object.forEach(obj => interRender(obj))
+    function interRender (objectInfo, drawed, duplicatedDrawed) {
+      if (objectInfo instanceof Array) {
+        objectInfo.forEach(obj => interRender(obj, drawed, duplicatedDrawed))
       } else {
+        let object = objectInfo.root
         let boundsInfo = object.boundsInfo
         if (!boundsInfo) {
-          console.log('未找到boundsInfo 跳过处理：', object)
+          console.log('未找到boundsInfo 跳过处理：', objectInfo)
           return
         }
         let width = (boundsInfo.right - boundsInfo.left) * 0.1, height = (boundsInfo.bottom - boundsInfo.top) * 0.1
         let rect = null
         let renderColor = object.renderColor || Math.floor(Math.random() * 0xFFFFFF)
         object.renderColor = renderColor
-        if (!object.content) {
-          if (object.clickable == true) {
-            rect = createRectangle(width, height, 1, renderColor, 0.3)
-          } else {
-            rect = createRectOutline(width, height, 1, renderColor, 0.8)
+        // 记录控件是否被重复添加
+        let { left, top, right, bottom } = object.boundsInfo
+        let key = ((l, t, r, b, d) => `${l}_${t}_${r}_${b}_${d}`)(left, top, right, bottom, object.depth)
+        let redrawContentRect = null
+        if (drawed.has(key)) {
+          console.error('控件重复绘制：', objectInfo)
+          duplicatedDrawed[key] = [objectInfo].concat(duplicatedDrawed[key])
+          let targetHasContent = duplicatedDrawed[key].filter(obj => !!obj.content)
+          if (targetHasContent && targetHasContent.length > 0) {
+            redrawContentRect = targetHasContent[0]
           }
         } else {
+          duplicatedDrawed[key] = [objectInfo]
+        }
+        drawed.add(key)
+        // 存在带内容的控件 优先显示它
+        if (redrawContentRect) {
+          boundsInfo = redrawContentRect.root.boundsInfo
+          width = (boundsInfo.right - boundsInfo.left) * 0.1
+          height = (boundsInfo.bottom - boundsInfo.top) * 0.1
           rect = createRectangle(width, height, 1, renderColor, 0.7, object.content)
+        } else {
+          if (!object.content) {
+            if (object.clickable + '' == 'true') {
+              rect = createRectangle(width, height, 1, renderColor, 0.3)
+            } else {
+              rect = createRectOutline(width, height, 1, renderColor, 0.8)
+            }
+          } else {
+            rect = createRectangle(width, height, 1, renderColor, 0.7, object.content)
+          }
         }
 
         // console.log('put rect', (boundsInfo.right - boundsInfo.left) * 0.1, (boundsInfo.bottom - boundsInfo.top) * 0.1, ' at ', boundsInfo.left * 0.1, boundsInfo.top * 0.1, 2 * object.depth)
         rect.position.set(boundsInfo.left * 0.1 + width / 2, -(boundsInfo.top * 0.1 + height / 2), 1 * object.depth)
-        rect.objectInfo = object
+        rect.objectInfo = objectInfo
         group.add(rect)
       }
     }
@@ -558,7 +667,7 @@
           return items.map(item => {
             let objectList = []
             if (selectedCahce.has(item.id)) {
-              objectList.push(item.root)
+              objectList.push(item)
             }
             if (item.children && item.children.length > 0) {
               objectList.push(buildWithChildren(item.children, selectedCahce))
@@ -589,14 +698,17 @@
           advance: false,
           // uiobjects: '',
           opened: [],
+          treeActive: [],
           visibleOnly: true,
+          clickableOnly: false,
           hasContent: false,
           inScreen: false,
           dialog: false,
           itemDetail: '',
           stackItems: [],
           showDetailIdx: 0,
-          selectedItems: [],
+          treeSelectedItems: [],
+          // selectedItems: [],
           selectedCache: new Set(),
           deviceHeight: null,
           deviceWidth: null,
@@ -604,8 +716,10 @@
           filterFunc: null,
           selectorFuncStr: '',
           selectorFunc: null,
+          selectionIndependent: true,
           drawedObjects: [],
           drawDuplicatedObjects: [],
+          positionDuplicatedObjects: {},
           winPos: { x: 0, y: 0 },
           devicePos: { x: 0, y: 0 },
           findTargetObj: false,
@@ -619,6 +733,17 @@
           totalWidgets: 0,
           imgBase64: typeof imageBase64 != 'undefined' ? imageBase64 || '' : '',
           drawImageCanvas: true,
+          hisDialog: false,
+          newDataKey: null,
+          hisObjects: [],
+          hisLoading: false,
+          maxHisData: 25,
+          canvasHeight: null,
+        }
+      },
+      filters: {
+        stamp2Str: function (timestamp) {
+          return formatDate(new Date(timestamp))
         }
       },
       computed: {
@@ -630,6 +755,11 @@
           return (rootNode, childArray) => {
             if (this.visibleOnly) {
               if (!rootNode.visible && !hasVisiableChild(childArray)) {
+                return false
+              }
+            }
+            if (this.clickableOnly) {
+              if (!(rootNode.clickable + '' == 'true') && !hasClickableChild(childArray)) {
                 return false
               }
             }
@@ -667,12 +797,22 @@
           }
           return []
         },
+        selectedItems: function () {
+          return this.treeSelectedItems
+        },
+        selectionType: function () {
+          return this.selectionIndependent ? 'independent' : 'leaf'
+        },
+        treeHeight: function () {
+          return this.canvasHeight ? this.canvasHeight + 'px' : '1200px'
+        }
       },
       watch: {
         selectedItems: {
           deep: true,
           immediate: true,
-          handler: function () {
+          handler: function (newVal, oldVal) {
+            console.log(newVal)
             console.log('selectedItems changed:', this.selectedItems.length)//, this.selectedItems)
             if (this.items && this.items.length > 0 && this.selectedItems.length > 0) {
               this.drawCanvas(this.items, this.selectedItems)
@@ -700,6 +840,9 @@
         visibleOnly: function () {
           this.buildItems()
         },
+        clickableOnly: function () {
+          this.buildItems()
+        },
         hasContent: function () {
           this.buildItems()
         },
@@ -708,9 +851,64 @@
         },
         imgBase64: function () {
           this.$el.drawImg.src = this.imgBase64
+        },
+        draw3DInfo: function (newVal, oldVal) {
+          if (newVal) {
+            // 隐藏悬浮菜单
+            this.findTargetObj = false
+          }
+        },
+        opened: {
+          handler () {
+            console.log('opened', this.opened)
+          },
+          immediate: true,
+          deep: true
+        },
+        selectionIndependent: function () {
+          console.log(this.$refs.treeNode.open)
         }
       },
       methods: {
+        openTarget: function (targetId) {
+          if (!targetId) {
+            targetId = this.itemId
+          }
+          this.treeActive = [targetId]
+          console.log('所有节点信息', this.items)
+          let selectedTarget = new Set()
+          selectedTarget.add(targetId)
+          this.opened = findOpenedParent(this.items[0], selectedTarget)
+        },
+        loadHisInfo: function () {
+          this.hisDialog = true
+          this.hisLoading = true
+          DBHelper.getAllData().then(list => {
+            this.hisObjects = list.reverse()
+            this.hisLoading = false
+          })
+        },
+        deleteData: function (key) {
+          DBHelper.deleteData(key).then(() => {
+            DBHelper.getAllData().then(list => {
+              this.hisObjects = list.reverse()
+              this.hisLoading = false
+            })
+          })
+        },
+        renderHisObject: function (hisObject) {
+          this.uiobjects = hisObject.uiobjects
+          this.imgBase64 = hisObject.imgBase64
+          this.deviceHeight = hisObject.deviceHeight
+          this.deviceWidth = hisObject.deviceWidth
+          let _this = this
+          setTimeout(() => {
+            _this.selectAll()
+          }, 500)
+          this.hisDialog = false
+          this.clearCanvas()
+          // treeSelectedItems = []
+        },
         connectServer: function () {
           if (!this.wsServerUrl) {
             this.connectStatus = '请输入服务端地址和端口'
@@ -741,6 +939,8 @@
               _this.deviceWidth = resp.width
               _this.uiobjects = JSON.stringify(JSON.parse(resp.widgetInfo), null, 2)
               _this.imgBase64 = 'data:image/png;base64,' + resp.imgBase64
+              _this.newDataKey = new Date().getTime()
+              DBHelper.addDataWithLimit({ timestamp: _this.newDataKey, uiobjects: _this.uiobjects, imgBase64: _this.imgBase64 }, _this.maxHisData)
               setTimeout(() => {
                 _this.selectAll()
               }, 500)
@@ -779,9 +979,12 @@
                 // console.log(data)
                 // setTimeout(() => {
                 idChecker = new Set()
-                let root = buildWithChild(data, _this.filter)
+                // 根据boundsInfo构建key 存储位置重复的对象
+                _this.positionDuplicatedObjects = {}
+                let root = buildWithChild(data, _this.filter, _this.positionDuplicatedObjects)
                 if (_this.selectorFunc) {
                   // setTimeout(function () {
+                  // 调用选择函数 自动选中需要选择的控件
                   _this.selectedCache.clear()
                   _this.autoSelect(root, _this.selectorFunc)
                   let list = []
@@ -792,7 +995,7 @@
                   // 延迟变更
                   setTimeout(function () {
                     console.log('build items select items:', list.length)
-                    _this.selectedItems = list
+                    _this.treeSelectedItems = list
                     _this.opened = findOpenedParent(root, _this.selectedCache)
                     callback && callback()
                   }, 20)
@@ -802,6 +1005,17 @@
                 }
                 _this.items = [root]
                 _this.totalWidgets = allKey.length
+                if (_this.newDataKey) {
+                  let key = _this.newDataKey
+                  console.log('更新控件信息', _this.newDataKey)
+                  _this.newDataKey = null
+                  setTimeout(() => {
+                    let scale = 50 / deviceHeight, imgHeight = deviceHeight * scale, imgWidth = deviceWidth * scale
+                    compressBase64Image(_this.imgBase64, imgWidth, imgHeight, 1).then(smallImg => {
+                      DBHelper.updateObjectInfo(key, _this.totalWidgets, smallImg, deviceWidth, deviceHeight)
+                    })
+                  }, 100)
+                }
                 // }, 10)
               }
             } else {
@@ -875,22 +1089,27 @@
         closeAll: function () {
           this.opened = []
         },
-        showDetail: function (root) {
+        showDetail: function (objectInfo) {
           this.dialog = true
-          if (root) {
-            console.log('选中目标：', root)
-            this.itemDetail = JSON.stringify(root, true)
+          if (objectInfo) {
+            console.log('选中目标：', objectInfo)
+            this.itemDetail = JSON.stringify(objectInfo.root, true)
+            // 用于删除对象
+            this.itemId = objectInfo.id
           }
-          this.stackItems = [{ root: root ? root : JSON.parse(this.itemDetail) }].concat(this.getStackObjects())
+          this.stackItems = this.getStackObjects()
           this.showDetailIdx = 0
         },
         selectAll: function () {
-          this.selectedItems = allKey
+          this.treeSelectedItems = allKey
         },
         handleActive: function (items) {
           console.log({
             key: 'active'
           }, items)
+        },
+        handleOpen: function (opened) {
+          this.opened = opened
         },
         clearCanvas: async function () {
           if (this.$el && this.$el.canvas) {
@@ -918,16 +1137,19 @@
           this.$el.ctx.strokeStyle = "#23ff00";
           console.log('绘制')
           let start = new Date().getTime()
+          // 记录是否存在重复绘制的对象
+          window.drawedObjectIds = new Set()
           await uiObjects.forEach(object => this.drawChild(object, tmpSelectCache, this.$el.ctx, drawed))
           console.log('绘制完毕，cost', new Date().getTime() - start, 'ms')
         },
         drawChild: function (object, selectedCache, ctx, drawed) {
           let { left, top, right, bottom } = object.root.boundsInfo
           let key = `${left}_${top}_${right}_${bottom}`
-          if (selectedCache.has(object.id) && !drawed.has(key) && widthInScreen(left) && widthInScreen(right) && heightInScreen(top) && heightInScreen(bottom)) {
+          if (selectedCache.has(object.id) && !drawed.has(key) && boundsInScreen(left, top, right, bottom)) {
             // console.log('绘制：', left, top, right - left, bottom - top)
             ctx.strokeRect(left, top, right - left, bottom - top)
             drawed.add(key)
+            window.drawedObjectIds.add(object.id)
             this.drawedObjects.push(object)
           } else if (drawed.has(key)) {
             this.drawDuplicatedObjects.push(object)
@@ -969,9 +1191,9 @@
             this.lastFindId = null
           }
         },
-        clickCenter: function (id) {
+        clickCenter: function () {
           let detail = this.itemDetail ? JSON.parse(this.itemDetail) : null
-          if (this.stackItems.length > 1) {
+          if (this.stackItems && this.stackItems.length > 1) {
             detail = this.stackItems[this.showDetailIdx].root
           }
           if (ws && isConnected && detail) {
@@ -1015,8 +1237,8 @@
           let idx = this.selectedItems.indexOf(this.itemId)
           this.selectedItems.splice(idx, 1)
           let stackObjects = this.getStackObjects()
-          console.log('堆叠数：', stackObjects.length + 1)
-          if (stackObjects.length > 0) {
+          console.log('堆叠数：', stackObjects.length)
+          if (stackObjects.length > 1) {
             stackObjects.forEach(remove => {
               let idx = this.selectedItems.indexOf(remove.id)
               if (idx > -1) {
@@ -1029,26 +1251,25 @@
           this.itemId == null
           this.lastFindId = null
           this.findTargetObj = false
+          this.dialog = false
         },
         getStackObjects: function () {
           let detailObj = JSON.parse(this.itemDetail)
-          return this.drawDuplicatedObjects.filter(v => {
-            let key1 = buildKey(v.root)
-            let key2 = buildKey(detailObj)
-            if (key1 == key2) {
-              console.log('remove key: ', key1)
-              return true
-            }
-            return false
-            // 
-            function buildKey (root) {
-              let { left, top, right, bottom } = root.boundsInfo
-              return `${left}_${top}_${right}_${bottom}`
-            }
-          })
+          let key = buildKey(detailObj)
+          return this.positionDuplicatedObjects[key] || []
+
+          function buildKey (root) {
+            let { left, top, right, bottom } = root.boundsInfo
+            return `${left}_${top}_${right}_${bottom}`
+          }
         }
       },
       mounted () {
+        DBHelper.waitForConnected().then(helper => {
+          helper.getAllData().then(resultList => {
+            console.log('历史数据：', resultList)
+          })
+        })
         this.$el.canvas = document.getElementById('myCanvas')
         this.$el.ctx = this.$el.canvas.getContext('2d')
         let _this = this
@@ -1099,10 +1320,11 @@
           _this.buildItems(_this.openAll)
         }, 10)
         function recalculate () {
-          canvasWidth = Math.min(400, window.innerWidth - 20)
+          canvasWidth = Math.min(600, window.innerWidth - 20)
           console.log('计算canvas width:', canvasWidth)
           _this.$el.canvas.width = canvasWidth
           _this.$el.canvas.height = canvasWidth / deviceWidth * deviceHeight
+          _this.canvasHeight = _this.$el.canvas.height
           if (_this.$el.drawImg && _this.$el.drawImg.src && _this.drawImageCanvas) {
             _this.$el.ctx.drawImage(_this.$el.drawImg, 0, 0, _this.$el.canvas.width, _this.$el.canvas.height)
           }
@@ -1121,7 +1343,7 @@
           _this.$el.drawImg.onload = function () {
             console.log('image load:', _this.$el.drawImg.width, ',', _this.$el.drawImg.height)
             if (_this.drawImageCanvas) {
-              _this.$el.ctx.drawImage(_this.$el.drawImg, 0, 0, _this.$el.canvas.width, _this.$el.canvas.height)
+              recalculate()
             }
           }
           setTimeout(() => {

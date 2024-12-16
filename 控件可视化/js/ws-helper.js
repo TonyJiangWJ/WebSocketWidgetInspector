@@ -1,3 +1,10 @@
+/*
+ * @Author: TonyJiangWJ
+ * @Date: 2024-12-12 11:38:56
+ * @Last Modified by: TonyJiangWJ
+ * @Last Modified time: 2024-12-16 14:50:11
+ * @Description: 
+ */
 
 let ws = null;          // WebSocket 实例
 let retryTimeout = 1000; // 初始重连间隔（毫秒）

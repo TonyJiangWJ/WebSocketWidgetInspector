@@ -3,4 +3,5 @@
 *txt
 *.log
 *.swp
-
+*.tar
+*.zip

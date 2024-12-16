@@ -1,3 +1,10 @@
+/*
+ * @Author: TonyJiangWJ
+ * @Date: 2024-12-12 10:23:42
+ * @Last Modified by: TonyJiangWJ
+ * @Last Modified time: 2024-12-16 14:49:38
+ * @Description: 
+ */
 let allKey = []
 let allObject = []
 let canvasWidth = 400
@@ -40,7 +47,7 @@ let columns = [
   { key: 'columnCount' },
   { key: 'columnSpan' },
 ]
-function buildWithChild (childArray, filter) {
+function buildWithChild (childArray, filter, duplicatedObjects) {
   let rootNode = childArray[0]
   columns.forEach(item => {
     if (item.isBoolean) {
@@ -89,10 +96,12 @@ function buildWithChild (childArray, filter) {
   }
   idChecker.add(root.id)
   allKey.push(root.id)
+  let key = `${left}_${top}_${right}_${bottom}`
+  duplicatedObjects[key] = [root].concat(duplicatedObjects[key]).filter(obj => !!obj)
   if (childArray.length > 1) {
     let i = 0
     for (let i = 1; i < childArray.length; i++) {
-      let child = buildWithChild(childArray[i], filter)
+      let child = buildWithChild(childArray[i], filter, duplicatedObjects)
       if (child) {
         root.children.push(child)
       }
@@ -176,6 +185,22 @@ function hasVisiableChild (childArray) {
   return false
 }
 
+function hasClickableChild (childArray) {
+  if (!childArray || childArray.length < 1) {
+    return false
+  }
+  if (childArray[0].clickable + '' == 'true') {
+    console.log('clickable:' + childArray.clickable)
+    return true
+  }
+  for (let i = 1; i < childArray.length; i++) {
+    if (hasClickableChild(childArray[i])) {
+      return true
+    }
+  }
+  return false
+}
+
 function widthInScreen (x) {
   return x >= 0 && x <= deviceWidth
 }
@@ -183,6 +208,11 @@ function widthInScreen (x) {
 function heightInScreen (y) {
   return y >= 0 && y <= deviceHeight
 }
+
+function boundsInScreen (left, top, right, bottom) {
+  return widthInScreen(left) && widthInScreen(right) && heightInScreen(top) && heightInScreen(bottom)
+}
+
 function boundsInside (root, l, t, r, b) {
   let { left, top, right, bottom } = root.boundsInfo
   return left >= l && right <= r && top >= t && bottom <= b
@@ -320,6 +350,11 @@ function Selector (node) {
     return this
   }
 
+  this.indexInParent = function (index) {
+    this.filters.push(v => v.indexInParent == index)
+    return this
+  }
+
   this.clickable = function (check) {
     if (typeof check === "undefined") {
       check = true
@@ -420,4 +455,75 @@ function BoundsInfo (boundsInfo) {
   this.height = () => boundsInfo.bottom - boundsInfo.top
   this.centerX = () => (boundsInfo.right + boundsInfo.left) / 2
   this.centerY = () => (boundsInfo.bottom + boundsInfo.top) / 2
+}
+
+function formatDate (date, fmt) {
+  if (typeof fmt === 'undefined') {
+    fmt = "yyyy-MM-dd HH:mm:ss"
+  }
+
+  var o = {
+    'M+': date.getMonth() + 1, // 月份
+    'd+': date.getDate(), // 日
+    'h+': date.getHours() % 12 === 0 ? 12 : date.getHours() % 12, // 小时
+    'H+': date.getHours(), // 小时
+    'm+': date.getMinutes(), // 分
+    's+': date.getSeconds(), // 秒
+    'q+': Math.floor((date.getMonth() + 3) / 3), // 季度
+    'S': date.getMilliseconds() // 毫秒
+  }
+  var week = {
+    '0': '\u65e5',
+    '1': '\u4e00',
+    '2': '\u4e8c',
+    '3': '\u4e09',
+    '4': '\u56db',
+    '5': '\u4e94',
+    '6': '\u516d'
+  }
+  let execResult
+  if (/(y+)/.test(fmt)) {
+    execResult = /(y+)/.exec(fmt)
+    fmt = fmt.replace(execResult[1], (date.getFullYear() + '').substring(4 - execResult[1].length))
+  }
+  if (/(E+)/.test(fmt)) {
+    execResult = /(E+)/.exec(fmt)
+    fmt = fmt.replace(execResult[1], ((execResult[1].length > 1) ? (execResult[1].length > 2 ? '\u661f\u671f' : '\u5468') : '') + week[date.getDay() + ''])
+  }
+  for (var k in o) {
+    if (new RegExp('(' + k + ')').test(fmt)) {
+      execResult = new RegExp('(' + k + ')').exec(fmt)
+      fmt = fmt.replace(execResult[1], (execResult[1].length === 1) ? (o[k]) : (('00' + o[k]).substring(('' + o[k]).length)))
+    }
+  }
+  return fmt
+}
+/**
+ * 压缩 Base64 图像
+ * @param {string} base64 - 原始 Base64 字符串
+ * @param {number} targetWidth - 压缩后的宽度
+ * @param {number} targetHeight - 压缩后的高度
+ * @param {number} quality - 输出质量（0 到 1）
+ * @returns {Promise<string>} 返回压缩后的 Base64 字符串
+ */
+function compressBase64Image (base64, targetWidth, targetHeight, quality) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = function () {
+      // 创建 Canvas 元素
+      const canvas = document.createElement('canvas');
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      const ctx = canvas.getContext('2d');
+
+      // 将图片绘制到 Canvas 上
+      ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+
+      // 导出压缩后的 Base64 图像
+      const compressedBase64 = canvas.toDataURL('image/png', quality); // 质量范围 0-1
+      resolve(compressedBase64);
+    };
+    img.onerror = reject;
+    img.src = base64; // 加载 Base64 图像
+  });
 }
