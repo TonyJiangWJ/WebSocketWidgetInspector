@@ -4,6 +4,7 @@
 
 runtime.loadDex('./autojs-common.dex')
 importClass(com.tony.autojs.search.UiObjectTreeBuilder)
+importClass(java.util.concurrent.CountDownLatch)
 
 let plugin_websocket = (() => {
   try {
@@ -117,38 +118,44 @@ function buildWidgetResult (requestData) {
     console.log('清空控件缓存')
     auto.clearCache()
   }
-  let widgetStart = new Date().getTime()
-  let widgetResult = requestWidgetInfos()
-  let widgetCost = new Date().getTime() - widgetStart
-  console.log('获取控件信息耗时', widgetCost)
-  let screen = null
-  let captureStart = new Date().getTime()
-  if (requestData.takeScreenshotByA11y && automator.takeScreenshot) {
-    screen = automator.takeScreenshot()
-  } else {
-    screen = captureScreen()
-  }
-  let captureCost = new Date().getTime() - captureStart
-  if (automator.takeScreenshot) {
-    console.log('无障碍截图耗时', captureCost)
-  } else {
-    console.log('原生截图耗时', captureCost)
-  }
-  let imgBase64 = null
-  let convertStart = new Date().getTime()
-  let resultObj = {
-    captureCost: captureCost,
-    widgetCost: widgetCost,
-  }
-  if (screen) {
-    imgBase64 = images.toBase64(screen)
-    console.log('图片转base64耗时', new Date().getTime() - convertStart)
-    resultObj.imgBase64 = imgBase64
-    resultObj.width = screen.width
-    resultObj.height = screen.height
-    resultObj.convertCost = new Date().getTime() - convertStart
-  }
-
+  let countDown = new CountDownLatch(2)
+  let resultObj = {}
+  let widgetResult = []
+  threads.start(function () {
+    let widgetStart = new Date().getTime()
+    widgetResult = requestWidgetInfos()
+    let widgetCost = new Date().getTime() - widgetStart
+    console.log('获取控件信息耗时', widgetCost)
+    resultObj.widgetCost = widgetCost
+    countDown.countDown()
+  })
+  threads.start(function () {
+    let screen = null
+    let captureStart = new Date().getTime()
+    if (requestData.takeScreenshotByA11y && automator.takeScreenshot) {
+      screen = automator.takeScreenshot()
+    } else {
+      screen = captureScreen()
+    }
+    let captureCost = new Date().getTime() - captureStart
+    if (automator.takeScreenshot) {
+      console.log('无障碍截图耗时', captureCost)
+    } else {
+      console.log('原生截图耗时', captureCost)
+    }
+    let imgBase64 = null
+    let convertStart = new Date().getTime()
+    if (screen) {
+      imgBase64 = images.toBase64(screen)
+      console.log('图片转base64耗时', new Date().getTime() - convertStart)
+      resultObj.imgBase64 = imgBase64
+      resultObj.width = screen.width
+      resultObj.height = screen.height
+      resultObj.convertCost = new Date().getTime() - convertStart
+    }
+    countDown.countDown()
+  })
+  countDown.await()
   if (widgetResult[0]) {
     return Object.assign(resultObj, {
       code: 'success',
@@ -176,8 +183,9 @@ function requestWidgetInfos () {
   maxDepth = -1
   let treeNodeBuilder = new UiObjectTreeBuilder(runtime.getAccessibilityBridge())
 
+  let start = new Date()
   let nodeList = treeNodeBuilder.buildTreeNode()
-  console.log('获取总根节点数：', nodeList.size())
+  console.log('获取总根节点数：', nodeList.size(), '耗时', new Date() - start)
   if (nodeList.size() <= 0) {
     toastLog('获取根节点失败 退出执行 请检查无障碍是否正常')
     return [false, '获取根节点失败 退出执行 请检查无障碍是否正常']

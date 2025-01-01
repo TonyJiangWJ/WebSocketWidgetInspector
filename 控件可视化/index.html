@@ -2,7 +2,7 @@
  * @Author: TonyJiangWJ
  * @Date: 2024-12-09 16:08:31
  * @Last Modified by: TonyJiangWJ
- * @Last Modified time: 2024-12-16 18:22:40
+ * @Last Modified time: 2024-12-19 22:18:39
  * @Description: github: https://github.com/TonyJiangWJ/WebSocketWidgetInspector
 -->
 <!DOCTYPE html>
@@ -15,6 +15,9 @@
   <link href="./css/vuetify.min.css" rel="stylesheet">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
   <style>
+    .container {
+      max-width: 90%;
+    }
     .v-treeview-node__label {
       overflow: unset;
     }
@@ -914,6 +917,7 @@
             this.connectStatus = '请输入服务端地址和端口'
             return
           }
+          localStorage.setItem('wsServerUrl', this.wsServerUrl)
           this.connecting = true
           createWebsocket(this.wsServerUrl, this)
         },
@@ -953,6 +957,7 @@
           if (!this.connected || this.requesting || !this.executeCode) {
             return
           }
+          this.executePath = (this.executePath || '').trim()
           this.requesting = true
           wsApi.request('operate', {
             data: this.executeCode, name: 'tmp', config: {
@@ -1265,6 +1270,10 @@
         }
       },
       mounted () {
+        let storeServerUrl = localStorage.getItem('wsServerUrl')
+        if (storeServerUrl) {
+          this.wsServerUrl = storeServerUrl
+        }
         DBHelper.waitForConnected().then(helper => {
           helper.getAllData().then(resultList => {
             console.log('历史数据：', resultList)
