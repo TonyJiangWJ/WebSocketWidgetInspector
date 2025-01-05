@@ -11,6 +11,7 @@
 - 然后再将当前目录下的 `autojs-common.dex` , `WebSocket控件查看器.js` , `package.json` 复制到设备目录下,例如 `/sdcard/脚本/控件查看器/`
 - 在浏览器中打开 `控件可视化/index.html`
 - 在AutoJS中运行 `WebSocket控件查看器.js` ,根据提示授权截图权限和无障碍权限。查看记录日志中显示的当前ip地址. 将 `ws://ip:8212` 填写到浏览器表单的服务地址中,然后点击 `连接服务` 等待设备连接成功
+- AutoJS Pro以及AutoX等可能修改了API导致无法正常使用，推荐使用困鱼或者修改版AutoJS，下载地址：`https://wwxs.lanzouq.com/b042le51i 密码:b034` 源代码地址：[https://github.com/TonyJiangWJ/Auto.js](https://github.com/TonyJiangWJ/Auto.js)
 
 ## 使用说明
 
