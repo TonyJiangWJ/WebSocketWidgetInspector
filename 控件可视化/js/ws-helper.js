@@ -2,7 +2,7 @@
  * @Author: TonyJiangWJ
  * @Date: 2024-12-12 11:38:56
  * @Last Modified by: TonyJiangWJ
- * @Last Modified time: 2024-12-16 14:50:11
+ * @Last Modified time: 2025-01-03 14:02:24
  * @Description: 
  */
 
@@ -62,6 +62,7 @@ function createWebsocket (serverUrl, _this) {
     retryTimeout = 1000; // 重置重连间隔
     _this.connectStatus = 'ready'
     console.log("WebSocket connection opened");
+    _this.success('连接成功')
   };
 
   // 接收消息
@@ -69,6 +70,7 @@ function createWebsocket (serverUrl, _this) {
     if (event.data instanceof Blob) {
       console.log('接收二进制数据')
       // todo 执行二进制数据处理
+      _this.handleImage(event.data)
       return
     }
     // 可以在此处理接收到的消息
@@ -102,5 +104,6 @@ function createWebsocket (serverUrl, _this) {
     _this.connectStatus = 'disconnected'
     console.error("WebSocket error:", error);
     ws.close(); // 主动关闭以触发重连逻辑
+    _this.fail('连接丢失，重新连接')
   }
 }

@@ -2,7 +2,7 @@
  * @Author: TonyJiangWJ
  * @Date: 2024-12-09 16:08:31
  * @Last Modified by: TonyJiangWJ
- * @Last Modified time: 2024-12-19 22:18:39
+ * @Last Modified time: 2025-01-03 14:04:02
  * @Description: github: https://github.com/TonyJiangWJ/WebSocketWidgetInspector
 -->
 <!DOCTYPE html>
@@ -18,6 +18,7 @@
     .container {
       max-width: 90%;
     }
+
     .v-treeview-node__label {
       overflow: unset;
     }
@@ -42,6 +43,13 @@
 
     .v-sheet.v-list {
       background: #00000000;
+    }
+
+    .wrap-snackbar {
+      white-space: normal;
+      /* 允许内容换行 */
+      max-width: 200px;
+      /* 设置最大宽度，确保内容有足够的空间换行 */
     }
 
     .code {
@@ -113,6 +121,13 @@
                 <v-btn elevation="2" @click="clickPos(null)">点击当前坐标</v-btn>
               </v-list-item>
             </v-list>
+          </div>
+          <div>
+            <!-- 右上角悬浮提示 -->
+            <v-snackbar v-model="showSnackbar" :timeout="showSnackTimeout" top right :color="showSnackColor"
+              class="wrap-snackbar">
+              {{showInfo}}
+            </v-snackbar>
           </div>
           <v-row dense no-gutters>
             <v-col><span>连接状态：</span><span :style="{color:connected?'green':'orange'}">{{connectStatus}}</span></v-col>
@@ -420,7 +435,7 @@
       // console.log('create rect with text:', text)
       ctx.fillText(text, canvas.width / 2, canvas.height / 2);
       // 将canvas转图片 然后创建文理
-      const dataURL = canvas.toDataURL('image/png'); // 转换为 PNG 图片
+      const dataURL = canvas.toDataURL('image/jpeg'); // 转换为 JPG 图片
       // console.log(dataURL)
       const texture = new THREE.TextureLoader().load(dataURL);
       // 创建纹理
@@ -686,6 +701,10 @@
       vuetify: new Vuetify(),
       data () {
         return {
+          showSnackbar: false,
+          showInfo: '',
+          showSnackColor: 'success',
+          showSnackTimeout: 1000,
           drawImageCanvas: true,
           draw3DInfo: false,
           showObjectJson: false,
@@ -815,7 +834,6 @@
           deep: true,
           immediate: true,
           handler: function (newVal, oldVal) {
-            console.log(newVal)
             console.log('selectedItems changed:', this.selectedItems.length)//, this.selectedItems)
             if (this.items && this.items.length > 0 && this.selectedItems.length > 0) {
               this.drawCanvas(this.items, this.selectedItems)
@@ -928,7 +946,7 @@
           this.requesting = true
           let _this = this
 
-          wsApi.request('widget_info', {}).then(resp => {
+          wsApi.request('widget_info', {}).then(async resp => {
             _this.requesting = false
             console.log('widget info from server:', JSON.stringify(resp, (key, value) => {
               // 过滤长字段 不在日志中打印
@@ -939,12 +957,14 @@
             }))
             console.log('截图耗时：', resp.captureCost, '控件耗时：', resp.widgetCost, '图像转换耗时：', resp.convertCost)
             if (resp.code == 'success') {
+              _this.success(`获取控件信息成功，截图耗时：${resp.captureCost}ms 控件耗时：${resp.widgetCost}ms 图像转换耗时：${resp.convertCost}ms`, 1500)
               _this.deviceHeight = resp.height
               _this.deviceWidth = resp.width
               _this.uiobjects = JSON.stringify(JSON.parse(resp.widgetInfo), null, 2)
-              _this.imgBase64 = 'data:image/png;base64,' + resp.imgBase64
               _this.newDataKey = new Date().getTime()
+              _this.imgBase64 = 'data:image/jpeg;base64,' + resp.imgBase64
               DBHelper.addDataWithLimit({ timestamp: _this.newDataKey, uiobjects: _this.uiobjects, imgBase64: _this.imgBase64 }, _this.maxHisData)
+
               setTimeout(() => {
                 _this.selectAll()
               }, 500)
@@ -1015,6 +1035,9 @@
                   console.log('更新控件信息', _this.newDataKey)
                   _this.newDataKey = null
                   setTimeout(() => {
+                    if (!_this.imgBase64) {
+                      return
+                    }
                     let scale = 50 / deviceHeight, imgHeight = deviceHeight * scale, imgWidth = deviceWidth * scale
                     compressBase64Image(_this.imgBase64, imgWidth, imgHeight, 1).then(smallImg => {
                       DBHelper.updateObjectInfo(key, _this.totalWidgets, smallImg, deviceWidth, deviceHeight)
@@ -1267,7 +1290,19 @@
             let { left, top, right, bottom } = root.boundsInfo
             return `${left}_${top}_${right}_${bottom}`
           }
-        }
+        },
+        success: function (info, timeout = 1000) {
+          this.showSnackbar = true
+          this.showInfo = info
+          this.showSnackColor = 'success'
+          this.showSnackTimeout = timeout
+        },
+        fail: function (info, timeout = 1000) {
+          this.showSnackbar = true
+          this.showInfo = info
+          this.showSnackColor = 'red'
+          this.showSnackTimeout = timeout
+        },
       },
       mounted () {
         let storeServerUrl = localStorage.getItem('wsServerUrl')

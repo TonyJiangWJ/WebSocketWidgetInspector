@@ -1,7 +1,10 @@
 // 关闭同名脚本
-(() => { let g = engines.myEngine(); var e = engines.all(), n = e.length; let r = g.getSource() + ""; 1 < n && e.forEach(e => { var n = e.getSource() + ""; g.id !== e.id && n == r && e.forceStop() }) })();
-
-
+let killed = false;
+(() => { let g = engines.myEngine(); var e = engines.all(), n = e.length; let r = g.getSource() + ""; 1 < n && e.forEach(e => { var n = e.getSource() + ""; g.id !== e.id && n == r && (() => { e.forceStop(); killed = true; })() }) })();
+if (killed) {
+  // 关闭其他脚本后需要延迟等待端口释放 避免卡死
+  sleep(1000)
+}
 runtime.loadDex('./autojs-common.dex')
 importClass(com.tony.autojs.search.UiObjectTreeBuilder)
 importClass(java.util.concurrent.CountDownLatch)
@@ -79,6 +82,7 @@ const requestDispatcher = {
       Object.assign(r, getResult)
       r.type = 'widgetInfo'
     }))
+    // conn.send(getResult.imgBase64)
   },
   operate: (conn, requestData, msg) => {
     console.log('执行脚本：', requestData.name, requestData.data, requestData.config)
@@ -146,9 +150,10 @@ function buildWidgetResult (requestData) {
     let imgBase64 = null
     let convertStart = new Date().getTime()
     if (screen) {
-      imgBase64 = images.toBase64(screen)
+      imgBase64 = images.toBase64(screen, 'jpg') // PNG速度太慢
       console.log('图片转base64耗时', new Date().getTime() - convertStart)
       resultObj.imgBase64 = imgBase64
+      resultObj.captureCost = captureCost
       resultObj.width = screen.width
       resultObj.height = screen.height
       resultObj.convertCost = new Date().getTime() - convertStart
