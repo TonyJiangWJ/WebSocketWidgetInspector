@@ -2,7 +2,7 @@
  * @Author: TonyJiangWJ
  * @Date: 2024-12-12 10:23:42
  * @Last Modified by: TonyJiangWJ
- * @Last Modified time: 2024-12-16 14:49:38
+ * @Last Modified time: 2025-01-05 22:19:03
  * @Description: 
  */
 let allKey = []
@@ -71,15 +71,14 @@ function buildWithChild (childArray, filter, duplicatedObjects) {
   }
   allObject.push(rootNode)
   let name = ''
+  if (rootNode.className) {
+    name += rootNode.className
+  }
   if (rootNode.id) {
-    name += ' id:' + rootNode.id
+    name += ` [id]:${rootNode.id}`
   }
   if (rootNode.content) {
     name += ` [${!!rootNode.desc ? 'desc' : 'text'}]:${rootNode.content}`
-  }
-  if (rootNode.boundsInfo) {
-    let bounds = rootNode.boundsInfo
-    name += ` bounds: [${bounds.left}, ${bounds.top} - ${bounds.right}, ${bounds.bottom}]`
   }
   let { left, top, right, bottom } = rootNode.boundsInfo
   let root = {
