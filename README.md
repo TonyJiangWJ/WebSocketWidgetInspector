@@ -8,6 +8,7 @@
 - clone当前仓库到自己电脑上
 - 设备和电脑需要在同一个局域网内,否则无法通过ip地址进行连接
 - 先安装autojs插件, `./plugin/websocket-plugin.apk` ,源码地址:[https://github.com/TonyJiangWJ/websocketplugin](https://github.com/TonyJiangWJ/websocketplugin)
+- 代码中用到的dex文件源代码见：[Auto.js/js-supports/autojs-tool-common](https://github.com/TonyJiangWJ/Auto.js/tree/main/js-supports/autojs-tool-common)
 - 然后再将当前目录下的 `autojs-common.dex` , `WebSocket控件查看器.js` , `package.json` 复制到设备目录下,例如 `/sdcard/脚本/控件查看器/`
 - 在浏览器中打开 `控件可视化/index.html`
 - 在AutoJS中运行 `WebSocket控件查看器.js` ,根据提示授权截图权限和无障碍权限。查看记录日志中显示的当前ip地址. 将 `ws://ip:8212` 填写到浏览器表单的服务地址中,然后点击 `连接服务` 等待设备连接成功
