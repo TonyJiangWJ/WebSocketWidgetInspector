@@ -237,7 +237,7 @@ function iterateAll (root, depth, index) {
   maxDepth = Math.max(maxDepth, depth)
   let uiObjectInfo = new UiObjectInfo(root.root, depth, index)
   if (root.getChildList().size() > 0) {
-    return [uiObjectInfo].concat(runtime.bridges.bridges.toArray(root.getChildList()).map((child, index) => iterateAll(child, depth + 1, index)))
+    return [uiObjectInfo].concat(toArray(root.getChildList()).map((child, index) => iterateAll(child, depth + 1, index)))
   } else {
     return [uiObjectInfo]
   }
@@ -325,4 +325,12 @@ function getIpAddress () {
   } catch (e) {
     console.error(e)
   }
+}
+
+function toArray (javaList) {
+  const array = []
+  for (let i = 0; i < javaList.size(); i++) {
+    array.push(javaList.get(i))
+  }
+  return array
 }
