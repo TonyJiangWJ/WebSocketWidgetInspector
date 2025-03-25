@@ -39,6 +39,11 @@ const wsApi = {
     return new Promise((resolve, reject) => {
       wsCaller.invoke(type, msgObj, (resp) => resolve(resp), reject)
     })
+  },
+  sendBytes: function (bytes) {
+    if (ws && isConnected) {
+      ws.send(bytes)
+    }
   }
 }
 

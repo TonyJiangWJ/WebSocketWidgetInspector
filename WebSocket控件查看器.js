@@ -24,6 +24,8 @@ if (!requestScreenCapture()) {
 }
 auto.waitFor()
 
+const uploadSessions = new java.util.concurrent.ConcurrentHashMap()
+
 let socketServer = plugin_websocket.createServer(8212, {
   onOpen: function (conn, handshake) {
 
@@ -38,12 +40,15 @@ let socketServer = plugin_websocket.createServer(8212, {
     handleRequest(conn, message)
   },
 
-  onByteMessage: function (conn, bytes) {
-
+  onByteMessage: function (conn, byteBuffer) {
+    // 接收二进制数据，特别处理文件传输
+    handlByteRequest(conn, byteBuffer)
   },
 
   onError: function (conn, ex) {
-
+    console.error('执行异常', ex)
+    toastLog('线程启动失败 可能端口被占用了，请运行一下：关闭运行中的websocket线程.js 再试')
+    exit()
   },
   onStart: function () {
 
@@ -51,8 +56,7 @@ let socketServer = plugin_websocket.createServer(8212, {
     let ipAddress = getIpAddress()
     console.log('ipAddress', ipAddress)
   }
-}
-)
+})
 
 socketServer.start()
 setInterval(() => {
@@ -88,6 +92,17 @@ const requestDispatcher = {
     console.log('执行脚本：', requestData.name, requestData.data, requestData.config)
     engines.execScript(requestData.name || 'tmp.js', requestData.data, requestData.config)
     conn.send(wrapResp(requestData, 'success', '操作成功'))
+  },
+  file: (conn, requestData, msg) => {
+    console.log('接受文件上传元数据：', JSON.stringify(requestData))
+    let { uploadId, fileName, savePath } = requestData
+    console.log(uploadId, fileName, savePath)
+    if (uploadId == null || fileName == null || savePath == null) {
+      conn.send(wrapResp(requestData, 'error', '无效的文件上传元数据'))
+      return
+    }
+    uploadSessions.put(uploadId, { fileName, savePath })
+    conn.send(wrapResp(requestData, 'success', '记录元数据成功'))
   }
 }
 
@@ -107,8 +122,65 @@ function handleRequest (conn, message) {
     }
   } catch (e) {
     console.log('执行异常', e)
-    conn.send(wrapResp(requestData, 'error', '执行异常' + e))
+    conn.send(wrapResp({}, 'error', '执行异常' + e))
   }
+}
+
+function handlByteRequest (conn, byteBuffer) {
+  if (byteBuffer == null) {
+    conn.send(wrapResp({ type: 'file' }, 'error', '文件上传失败，无效的内容'))
+    return
+  }
+  let bytes = byteBuffer.array()
+  // TODO 提取上传id
+  let { uploadId, data } = inspectUploadId(bytes)
+  if (!uploadId) {
+    conn.send(wrapResp({ type: 'file' }, 'error', '文件上传失败，提取uploadId失败'))
+    return
+  }
+  let sessionInfo = uploadSessions.get(uploadId)
+  if (sessionInfo) {
+    let { fileName, savePath } = sessionInfo
+    try {
+      savePath = prepareSavePath(files.join(savePath, fileName))
+      console.info("保存文件到路径：", files.path(savePath))
+      files.writeBytes(savePath, data)
+      conn.send(wrapResp({ type: 'file' }, 'success', '文件上传成功'))
+    } catch (e) {
+      console.error('保存文件内容异常', e)
+      conn.send(wrapResp({ type: 'file' }, 'error', '文件上传失败，保存文件异常'))
+    }
+  } else {
+    conn.send(wrapResp({ type: 'file' }, 'error', '文件上传失败，无效的上传id'))
+  }
+}
+
+function prepareSavePath(savePath) {
+  if (!files.ensureDir(savePath)) {
+    throw new Error('保存路径无法创建，保存失败：' + savePath)
+  }
+  return savePath
+}
+
+function inspectUploadId (bytes) {
+  let uploadId = null
+  let index = 0
+  console.log('获取二进制数据，总长度：', bytes.length)
+  // console.log('content:', new java.lang.String(bytes))
+  for (let i = 0; i < bytes.length; i++) {
+    // console.log(i + ' => ', bytes[i])
+    // 查找\r\n
+    if (bytes[i] === 13 && bytes[i + 1] === 10) {
+      uploadId = ''
+      for (let j = 0; j < i; j++) {
+        uploadId += String.fromCharCode(bytes[j])
+      }
+      index = i + 2
+      break
+    }
+  }
+  console.log('解析uploadId:', uploadId)
+  return { uploadId, data: bytes.slice(index) }
 }
 
 /**

@@ -2,7 +2,7 @@
  * @Author: TonyJiangWJ
  * @Date: 2024-12-09 16:08:31
  * @Last Modified by: TonyJiangWJ
- * @Last Modified time: 2025-01-03 14:04:02
+ * @Last Modified time: 2025-03-25 13:48:39
  * @Description: github: https://github.com/TonyJiangWJ/WebSocketWidgetInspector
 -->
 <!DOCTYPE html>
@@ -193,6 +193,12 @@
             <v-col dense>
               <v-btn v-if="showExecuteCode" elevation="2" @click="sendCode()" :loading="requesting">发送执行</v-btn>
             </v-col>
+            <v-col dense>
+              <v-checkbox v-model="showSendFile" label="保存文件" dense></v-checkbox>
+            </v-col>
+            <v-col dense>
+              <v-btn v-if="showSendFile" elevation="2" @click="sendFile()" :loading="requesting">发送文件</v-btn>
+            </v-col>
           </v-row>
           <template v-if="showExecuteCode">
             <v-row>
@@ -205,6 +211,26 @@
               <v-col>
                 <v-textarea v-model="executePath" label="执行路径"
                   placeholder="输入脚本执行时所在的路径，以便可以通过require加载js 例如：/sdcard/脚本/MyScripts/" :rows="1"></v-textarea>
+              </v-col>
+            </v-row>
+          </template>
+          <template v-if="showSendFile">
+            <v-row dense>
+              <v-col dense>
+                <v-textarea v-model="saveFileContent" label="文件内容" :rows="3" placeholder="输入需要保存的文件内容">
+                </v-textarea>
+              </v-col>
+            </v-row>
+            <v-row dense>
+              <v-col dense>
+                <v-textarea v-model="saveFilePath" label="保存路径"
+                  placeholder="输入文件保存的路径， 例如：/sdcard/脚本/MyScripts/" :rows="1"></v-textarea>
+              </v-col>
+            </v-row>
+            <v-row dense>
+              <v-col dense>
+                <v-textarea v-model="saveFileName" label="文件名称"
+                  placeholder="输入文件名称，例如：test.js" :rows="1"></v-textarea>
               </v-col>
             </v-row>
           </template>
@@ -489,11 +515,25 @@
       texture.minFilter = THREE.LinearFilter; // 缩小纹理时的过滤
       texture.magFilter = THREE.LinearFilter; // 放大纹理时的过滤
 
+      const reversTexture = new THREE.TextureLoader().load(base64Image);
+
+      // 镜像反转纹理
+      reversTexture.wrapS = THREE.RepeatWrapping;
+      reversTexture.repeat.x = -1; // 水平镜像反转
       // 创建材质并应用纹理
       const material = new THREE.MeshBasicMaterial({ map: texture });
-
+      const reversMaterial = new THREE.MeshBasicMaterial({ map: reversTexture });
+      // 设置矩形六个面的材质
+      const materials = [
+        new THREE.MeshBasicMaterial({ color: 0xffffff }), // 右
+        new THREE.MeshBasicMaterial({ color: 0xffffff }), // 左
+        new THREE.MeshBasicMaterial({ color: 0xffffff }), // 上
+        new THREE.MeshBasicMaterial({ color: 0xffffff }), // 下
+        material, // 前
+        reversMaterial, // 后
+      ]
       // 创建矩形网格
-      return new THREE.Mesh(geometry, material);
+      return new THREE.Mesh(geometry, materials);
     }
 
     function clearGroup (group) {
@@ -711,6 +751,10 @@
           showExecuteCode: false,
           executeCode: '',
           executePath: '',
+          showSendFile: false,
+          saveFileName: 'test11-1.js',
+          saveFilePath: '/sdcard/脚本/测试用',
+          saveFileContent: '12341234',
           // wsServerUrl: 'ws://192.168.254.238:8212',
           wsServerUrl: 'ws://192.168.2.104:8212',
           connectStatus: '未连接',
@@ -985,6 +1029,23 @@
             }
           }).then(() => this.requesting = false)
         },
+        sendFile: function () {
+          if (!this.connected || this.requesting || !this.saveFileContent || !this.saveFileName || !this.saveFilePath) {
+            console.log('connected', this.connected, 'requesting', this.requesting, 'saveFileContent', this.saveFileContent, 'saveFileName', this.saveFileName, 'saveFilePath', this.saveFilePath)
+            return
+          }
+          const uploadId = new Date().getTime() + ''
+          wsApi.request('file', {
+            uploadId: uploadId,
+            fileName: this.saveFileName,
+            savePath: this.saveFilePath,
+          }).then(resp => {
+            if (resp.code == 'success') {
+              wsApi.sendBytes(new Blob([uploadId + '\r\n' + this.saveFileContent]))
+            }
+            this.requesting = false
+          })
+        },
         buildItems: function (callback) {
           // debugger
           console.log('触发buildItems')
@@ -1230,7 +1291,8 @@
               data: ((x, y) => {
                 return `(() => {
                   //toastLog('点击位置：${x} ${y}')
-                  automator.click(${x}, ${y})
+                  auto()
+                  click(${x}, ${y})
               })()`
               })(left + (right - left) / 2, top + (bottom - top) / 2).toString()
             })
@@ -1248,7 +1310,8 @@
               data: ((x, y) => {
                 return `(() => {
                   //toastLog('点击位置：${x} ${y}')
-                  automator.click(${x}, ${y})
+                  auto()
+                  click(${x}, ${y})
               })()`
               })(this.devicePos.x, this.devicePos.y).toString()
             })
