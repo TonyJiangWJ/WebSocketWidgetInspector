@@ -26,13 +26,30 @@ auto.waitFor()
 
 const uploadSessions = new java.util.concurrent.ConcurrentHashMap()
 
+let connectedClients = []
 let socketServer = plugin_websocket.createServer(8212, {
   onOpen: function (conn, handshake) {
-
+    let address = conn.getRemoteSocketAddress() + ''
+    console.log('client connect', address)
+    connectedClients.push({
+      address: address,
+      conn: conn
+    })
   },
 
   onClose: function (conn, code, reason, remote) {
-
+    let address = conn.getRemoteSocketAddress() + ''
+    let index = -1
+    for (let i = 0; i < connectedClients.length; i++) {
+      let c = connectedClients[i]
+      if (c.address == address) {
+        console.log('client disconnected', address)
+        index = i
+      }
+    }
+    if (index > -1) {
+      connectedClients = connectedClients.splice(index, 1)
+    }
   },
 
   onMessage: function (conn, message) {
@@ -103,6 +120,25 @@ const requestDispatcher = {
     }
     uploadSessions.put(uploadId, { fileName, savePath })
     conn.send(wrapResp(requestData, 'success', '记录元数据成功'))
+  },
+  log_dispatcher: (conn, requestData, msg) => {
+    console.log('接收转发日志：', JSON.stringify(requestData))
+    console.log('当前接入客户端数量：', connectedClients.length)
+    let currentAddress = conn.getRemoteSocketAddress() + ''
+    connectedClients.forEach(oc => {
+      if (oc.address == currentAddress) {
+        return
+      }
+      if (oc.conn.isOpen()) {
+        console.log('dispatch log to:', oc.address)
+        oc.conn.send(JSON.stringify({
+          type: 'log_dispatcher',
+          message: requestData.data
+        }))
+      } else {
+        console.log(oc.address, 'is not open')
+      }
+    })
   }
 }
 
@@ -155,7 +191,7 @@ function handlByteRequest (conn, byteBuffer) {
   }
 }
 
-function prepareSavePath(savePath) {
+function prepareSavePath (savePath) {
   if (!files.ensureDir(savePath)) {
     throw new Error('保存路径无法创建，保存失败：' + savePath)
   }
@@ -258,10 +294,26 @@ let maxDepth = -1
 function requestWidgetInfos () {
   // 重置最大深度
   maxDepth = -1
-  let treeNodeBuilder = new UiObjectTreeBuilder(runtime.getAccessibilityBridge())
+
+  let treeNodeBuilder = null
+  let supportOld = false
+  try {
+    treeNodeBuilder = new UiObjectTreeBuilder(runtime.getAccessibilityBridge())
+    supportOld = true
+  } catch (e) {
+    treeNodeBuilder = new UiObjectTreeBuilder(null)
+  }
+
+  function buildTreeNode() {
+    if (supportOld) {
+      return treeNodeBuilder.buildTreeNode()
+    } else {
+      return treeNodeBuilder.buildTreeNode(runtime.accessibilityBridge.windowRoots())
+    }
+  }
 
   let start = new Date()
-  let nodeList = treeNodeBuilder.buildTreeNode()
+  let nodeList = buildTreeNode()
   console.log('获取总根节点数：', nodeList.size(), '耗时', new Date() - start)
   if (nodeList.size() <= 0) {
     toastLog('获取根节点失败 退出执行 请检查无障碍是否正常')
@@ -284,6 +336,14 @@ function requestWidgetInfos () {
           return undefined
         } else {
           packageName = value
+        }
+      }
+      if (key == 'boundsInfo') {
+        value = {
+          left: value.left,
+          top: value.top,
+          right: value.right,
+          bottom: value.bottom
         }
       }
       return value
