@@ -121,6 +121,38 @@ const requestDispatcher = {
     uploadSessions.put(uploadId, { fileName, savePath })
     conn.send(wrapResp(requestData, 'success', '记录元数据成功'))
   },
+  pullFile: (conn, requestData, msg) => {
+    console.log('接受文件下载请求：', JSON.stringify(requestData))
+    let { filePath } = requestData
+    if (filePath == null) {
+      conn.send(wrapResp(requestData, 'error', '无效的文件下载请求'))
+      return
+    }
+    if (!files.exists(filePath)) {
+      conn.send(wrapResp(requestData, 'error', '文件不存在'))
+      return
+    }
+    fileContent = files.readBytes(filePath)
+    conn.send(java.nio.ByteBuffer.wrap(fileContent))
+  },
+  listFile: (conn, requestData, msg) => {
+    console.log('接收文件列表请求：', JSON.stringify(requestData))
+    let { path } = requestData
+    if (path == null) {
+      conn.send(wrapResp(requestData, 'error', '无效的文件列表请求'))
+      return
+    }
+    if (!files.exists(path)) {
+      conn.send(wrapResp(requestData, 'error', '文件路径不存在'))
+      return
+    }
+    let fileList = files.listDir(path)
+    conn.send(wrapResp(requestData, 'success', '获取文件列表成功', (r) => {
+      r.files = fileList.map(file => {
+        return { path: file, isDir: files.isDir(files.join(path, file)) }
+      })
+    }))
+  },
   log_dispatcher: (conn, requestData, msg) => {
     console.log('接收转发日志：', JSON.stringify(requestData))
     console.log('当前接入客户端数量：', connectedClients.length)

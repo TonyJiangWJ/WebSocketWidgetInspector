@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/google/uuid" // 新增UUID包
@@ -25,6 +27,27 @@ type FileMeta struct {
 	UploadId string `json:"uploadId"`
 }
 
+// PullFileMeta 拉取文件元数据
+type PullFileMeta struct {
+	Type     string `json:"type"`
+	FilePath string `json:"filePath"`
+}
+
+// ListFileMeta 读取文件列表元数据
+type ListFileMeta struct {
+	Type string `json:"type"`
+	Path string `json:"path"`
+}
+
+type ListFileResp struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	Files   []struct {
+		Path  string `json:"path"`
+		IsDir bool   `json:"isDir"`
+	} `json:"files"`
+}
+
 func main() {
 
 	// 定义命令行参数变量
@@ -32,16 +55,14 @@ func main() {
 		filePath = flag.String("file", "default.txt", "文件路径")
 		savePath = flag.String("save", "/sdcard/脚本/测试用/", "保存路径")
 		host     = flag.String("host", "192.168.22.235:8212", "服务地址")
+		pull     = flag.Bool("pull", false, "是否为拉取文件")
+		list     = flag.Bool("list", false, "是否为文件列表")
 	)
 
 	// 解析参数（必须调用）
 	flag.Parse()
-	fileName := filepath.Base(*filePath)
-	newSavePath := strings.Replace(*savePath, fileName, "", 1)
-	// 使用参数
-	fmt.Printf("文件路径: %s\n", *filePath)
-	fmt.Printf("文件名称: %s\n", fileName)
-	fmt.Printf("保存路径: %s\n", newSavePath)
+	fmt.Printf("拉取文件模式： %t\n", *pull)
+	fmt.Printf("文件列表模式： %t\n", *list)
 	fmt.Printf("服务地址: %s\n", *host)
 
 	// 设置WebSocket服务器地址
@@ -54,7 +75,120 @@ func main() {
 		log.Fatal("Dial error:", err)
 	}
 	defer conn.Close()
+	if *list {
+		log.Printf("读取文件列表路径: %s", *filePath)
+		listFile(conn, filePath)
+		return
+	}
 
+	if *pull {
+		// 使用参数
+		fmt.Printf("拉取文件路径: %s\n", *filePath)
+		fmt.Printf("保存路径: %s\n", *savePath)
+		pullFile(conn, filePath, *savePath)
+	} else {
+		fileName := filepath.Base(*filePath)
+		newSavePath := strings.Replace(*savePath, fileName, "", 1)
+		// 使用参数
+		fmt.Printf("文件路径: %s\n", *filePath)
+		fmt.Printf("文件名称: %s\n", fileName)
+		fmt.Printf("保存路径: %s\n", newSavePath)
+		sendFile(conn, filePath, newSavePath, fileName)
+	}
+
+}
+
+func pullFile(conn *websocket.Conn, filePath *string, savePath string) {
+
+	// 准备元数据
+	meta := PullFileMeta{
+		Type:     "pullFile",
+		FilePath: *filePath,
+	}
+
+	// 将元数据序列化为JSON
+	metaJson, err := json.Marshal(meta)
+	if err != nil {
+		log.Fatal("JSON marshal error:", err)
+	}
+
+	// 先发送元数据(作为文本消息)
+	if err := conn.WriteMessage(websocket.TextMessage, metaJson); err != nil {
+		log.Fatal("Send metadata error:", err)
+	}
+	// 创建或打开一个文件用于写入二进制数据
+	file, err := os.Create(savePath)
+	if err != nil {
+		log.Fatalf("创建文件失败: %v", err)
+	}
+	defer file.Close()
+	// 在发送元数据之后添加响应处理
+	messageType, message, err := conn.ReadMessage()
+	if err != nil {
+		log.Fatal("等待元数据响应失败:", err)
+	}
+	// 只处理二进制消息
+	if messageType == websocket.BinaryMessage {
+		// 将接收到的二进制数据写入文件
+		_, err := file.Write(message)
+		if err != nil {
+			log.Fatalf("写入文件失败: %v", err)
+		}
+		log.Printf("写入 %d 字节二进制数据到文件", len(message))
+	} else {
+		log.Fatalf("收到非二进制消息，忽略 messageType: %d 响应数据：%s", messageType, message)
+	}
+	log.Print("Pull file successfully!")
+}
+
+func listFile(conn *websocket.Conn, filePath *string) {
+	log.Printf("准备读取文件列表，路径：%s", *filePath)
+	listFile := ListFileMeta{
+		Type: "listFile",
+		Path: *filePath,
+	}
+	// 将元数据序列化为JSON
+	metaJson, err := json.Marshal(listFile)
+	if err != nil {
+		log.Fatal("JSON marshal error:", err)
+	}
+	// 先发送元数据(作为文本消息)
+	if err := conn.WriteMessage(websocket.TextMessage, metaJson); err != nil {
+		log.Fatal("Send metadata error:", err)
+	}
+	// 在发送元数据之后添加响应处理
+	_, resp, err := conn.ReadMessage()
+	if err != nil {
+		log.Fatal("等待元数据响应失败:", err)
+	}
+	// log.Printf("服务端元数据响应:")
+	// prettyJson(resp)
+	var listFileResp ListFileResp
+	if err := json.Unmarshal(resp, &listFileResp); err != nil {
+		log.Fatal("解析响应数据失败", err)
+	}
+
+	// 排序逻辑：
+	// 1. 先按照 IsDir 排序，假设目录排在前面（即 IsDir==true 的排前面）
+	// 2. 然后再按照文件或目录名称排序
+	sort.Slice(listFileResp.Files, func(i, j int) bool {
+		// 如果一个是目录，一个不是目录，则目录排前
+		if listFileResp.Files[i].IsDir != listFileResp.Files[j].IsDir {
+			return listFileResp.Files[i].IsDir && !listFileResp.Files[j].IsDir
+		}
+		// 如果两者类型相同，再按照文件名称进行字典序排序
+		return listFileResp.Files[i].Path < listFileResp.Files[j].Path
+	})
+	for _, file := range listFileResp.Files {
+		mark := "D"
+		if !file.IsDir {
+			mark = "F"
+		}
+		fmt.Printf("%s\t%s\n", mark, file.Path)
+	}
+}
+
+func sendFile(conn *websocket.Conn, filePath *string, savePath string, fileName string) {
 	// 读取文件内容
 	content, err := ioutil.ReadFile(*filePath)
 	if err != nil {
@@ -74,7 +208,7 @@ func main() {
 	meta := FileMeta{
 		Type:     "file",
 		FileName: filepath.Base(*filePath),
-		SavePath: newSavePath,
+		SavePath: savePath,
 		FileSize: fileInfo.Size(),
 		FileExt:  filepath.Ext(*filePath),
 		UploadId: uploadID, // 替换为随机UUID
@@ -112,5 +246,20 @@ func main() {
 	}
 	log.Printf("服务端文件处理响应: %s", resp)
 
-	fmt.Println("File sent successfully!")
+	log.Print("File sent successfully!")
+}
+
+func prettyJson(jsonData []byte) {
+	// 定义一个 bytes.Buffer 用于存放格式化后的 JSON 数据
+	var prettyJSON bytes.Buffer
+
+	// 使用 json.Indent 方法进行格式化，美化 JSON 数据
+	err := json.Indent(&prettyJSON, jsonData, "", "    ")
+	if err != nil {
+		log.Fatalf("格式化 JSON 数据失败: %v", err)
+	}
+
+	// 打印美化后的 JSON 数据
+	fmt.Println(prettyJSON.String())
+
 }
