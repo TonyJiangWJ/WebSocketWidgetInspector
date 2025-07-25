@@ -2,7 +2,7 @@
  * @Author: TonyJiangWJ
  * @Date: 2024-12-12 11:38:56
  * @Last Modified by: TonyJiangWJ
- * @Last Modified time: 2025-01-03 14:02:24
+ * @Last Modified time: 2025-04-19 09:27:14
  * @Description: 
  */
 
@@ -89,6 +89,9 @@ function createWebsocket (serverUrl, _this) {
     }
     // widgetInfo请求过大 不适合全部打印
     if (result.type !== 'widgetInfo') {
+      if (result.type == 'log_dispatcher') {
+        _this.handleLog(result)
+      }
       console.log("Message from server:", event.data);
     }
   };

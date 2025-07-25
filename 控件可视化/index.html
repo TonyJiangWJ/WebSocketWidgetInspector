@@ -2,7 +2,7 @@
  * @Author: TonyJiangWJ
  * @Date: 2024-12-09 16:08:31
  * @Last Modified by: TonyJiangWJ
- * @Last Modified time: 2025-03-25 13:48:39
+ * @Last Modified time: 2025-07-25 15:16:51
  * @Description: github: https://github.com/TonyJiangWJ/WebSocketWidgetInspector
 -->
 <!DOCTYPE html>
@@ -59,6 +59,20 @@
       margin: 0 5px;
     }
 
+    .depth-slider {
+      margin: 10px 0;
+      padding: 0 10px;
+      /* 增加左右内边距，避免滑块贴边 */
+    }
+
+    .search-box {
+      padding: 5px;
+    }
+
+    .log-item {
+      word-break: break-all;
+    }
+
     @media screen and (min-device-width: 500px) {
       .left-tree {
         max-width: 100%;
@@ -100,6 +114,47 @@
 <body>
   <div id="app" v-cloak>
     <v-app>
+      <!-- 新增侧边栏 -->
+      <v-navigation-drawer v-model="sidebar" temporary right app style="width: 500px;">
+        <!-- 侧边栏内容 -->
+        <v-card flat style="height: 100%; display: flex; flex-direction: column;">
+          <div style="flex: 0 0 auto;">
+            <v-card-title>
+              <label>日志信息</label>
+              <!-- 问号提示图标 -->
+              <v-tooltip bottom>
+                <template v-slot:activator="{ on, attrs }">
+                  <v-icon v-bind="attrs" v-on="on" class="mx-2" color="grey lighten-1">
+                    mdi-help-circle-outline
+                  </v-icon>
+                </template>
+                <span>在autojs中连接电脑，地址使用当前websocket地址:{{wsServerUrl?wsServerUrl.replace('ws://', ''):''}}即可自动转发日志</span>
+              </v-tooltip>
+              <v-btn small elevation="2" @click="clearLogs()">清空</v-btn>
+              <v-spacer></v-spacer>
+              <v-btn icon @click="toggleSidebar">
+                <v-icon>{{ sidebar ? 'mdi-close' : 'mdi-menu' }}</v-icon>
+              </v-btn>
+            </v-card-title>
+
+            <v-divider></v-divider>
+            <!-- 搜索框 -->
+            <div class="search-box">
+              <v-text-field v-model="searchText" prepend-inner-icon="mdi-magnify" placeholder="搜索日志..." clearable dense
+                outlined hide-details></v-text-field>
+            </div>
+          </div>
+          <v-divider></v-divider>
+          <v-card-text style="overflow-y: auto; flex: 1 1 auto;">
+            <v-list dense>
+              <v-list-item v-for="(log, index) in filteredLogs" :key="index" class="log-item"
+                :style="{ color:checkColor(log.message), minHeight: '30px' }">
+                {{ log.message }}
+              </v-list-item>
+            </v-list>
+          </v-card-text>
+        </v-card>
+      </v-navigation-drawer>
       <v-main>
         <v-container>
           <div v-show="findTargetObj" class="float_box_discover"
@@ -138,6 +193,9 @@
               <v-btn v-if="!connected" elevation="2" @click="connectServer()" :loading="connecting">连接服务</v-btn>
               <v-btn v-if="connected" elevation="2" @click="requestWidgetInfo()" :loading="requesting">获取当前控件信息</v-btn>
               <v-btn elevation="2" @click="loadHisInfo()">加载历史数据</v-btn>
+              <v-btn icon @click="toggleSidebar">
+                <v-icon>{{ sidebar ? 'mdi-close' : 'mdi-menu' }}</v-icon>
+              </v-btn>
             </v-col>
           </v-row>
           <v-row dense no-gutters>
@@ -223,14 +281,13 @@
             </v-row>
             <v-row dense>
               <v-col dense>
-                <v-textarea v-model="saveFilePath" label="保存路径"
-                  placeholder="输入文件保存的路径， 例如：/sdcard/脚本/MyScripts/" :rows="1"></v-textarea>
+                <v-textarea v-model="saveFilePath" label="保存路径" placeholder="输入文件保存的路径， 例如：/sdcard/脚本/MyScripts/"
+                  :rows="1"></v-textarea>
               </v-col>
             </v-row>
             <v-row dense>
               <v-col dense>
-                <v-textarea v-model="saveFileName" label="文件名称"
-                  placeholder="输入文件名称，例如：test.js" :rows="1"></v-textarea>
+                <v-textarea v-model="saveFileName" label="文件名称" placeholder="输入文件名称，例如：test.js" :rows="1"></v-textarea>
               </v-col>
             </v-row>
           </template>
@@ -266,6 +323,12 @@
                 </canvas>
               </div>
               <div v-show="draw3DInfo">
+                <!-- 深度间隔滑块 -->
+                <div class="depth-slider">
+                  <label>深度间隔：{{ depthSpacing }}</label>
+                  <v-slider v-model="depthSpacing" :min="0.1" :max="20" :step="0.1" hide-details thumb-label></v-slider>
+                  <!-- @input="onDepthSpacingInput" @change="onDepthSpacingChange"></v-slider> -->
+                </div>
                 <div style="margin-top: -20px; margin-left: 5px;">
                   <span>左键旋转，右键平移，中键缩放</span>
                 </div>
@@ -533,10 +596,13 @@
         reversMaterial, // 后
       ]
       // 创建矩形网格
-      return new THREE.Mesh(geometry, materials);
+      let mesh = new THREE.Mesh(geometry, materials);
+      mesh.userData = { isBackgroundImage: true }
+      return mesh
     }
 
     function clearGroup (group) {
+      console.log('清除已渲染对象')
       while (group.children.length > 0) {
         const child = group.children[0]; // 获取第一个子对象
 
@@ -560,29 +626,81 @@
       }
     }
 
+    // 仅更新对象位置的函数
+    function updatePositions (objects, depthSpacingValue) {
+      // 创建一个 Map 来快速查找 objectInfo by id
+      const objectInfoMap = new Map();
+      function populateMap (objArray) {
+        objArray.forEach(obj => {
+          if (obj instanceof Array) {
+            populateMap(obj);
+          } else {
+            if (obj && obj.root) {
+              let object = obj.root
+              let { left, top, right, bottom } = object.boundsInfo
+              let key = ((l, t, r, b, d) => `${l}_${t}_${r}_${b}_${d}`)(left, top, right, bottom, object.depth)
+              objectInfoMap.set(key, obj);
+            }
+          }
+        });
+      }
+      populateMap(objects);
+
+      // 遍历 group 中的子对象并更新位置
+      group.children.forEach(child => {
+        // 跳过背景图等特殊对象
+        if (child.userData.isBackgroundImage) {
+          return;
+        }
+
+        const id = child.userData.associatedId;
+        if (id !== undefined) {
+          const objectInfo = objectInfoMap.get(id);
+          if (objectInfo && objectInfo.root && objectInfo.root.boundsInfo) {
+            const object = objectInfo.root;
+            const boundsInfo = object.boundsInfo;
+            const width = (boundsInfo.right - boundsInfo.left) * 0.1;
+            const height = (boundsInfo.bottom - boundsInfo.top) * 0.1;
+            // 更新位置，只改变 Z 坐标
+            child.position.set(
+              boundsInfo.left * 0.1 + width / 2,
+              -(boundsInfo.top * 0.1 + height / 2),
+              depthSpacingValue * object.depth // <-- 只更新 Z
+            );
+          }
+        }
+      });
+    }
+
     // Create rectangles and add them to a group
     const group = new THREE.Group();
-
-    function rerender (objects, imageBase64) {
+    let hasInitializedObjects = false;
+    function rerender (objects, imageBase64, depthSpacingValue = 1) {
       // console.log('绘制对象列表：', objects)
       // 设置偏移 使左上角顶点位于 0,0,0
       group.position.set(-deviceWidth / 10 / 2, deviceHeight / 10 / 2, 0);
-      clearGroup(group)
+      if (!hasInitializedObjects) {
+        clearGroup(group)
 
-      const rect1 = createRectangleWithImage(deviceWidth / 10, deviceHeight / 10, 1, imageBase64); // Blue background rectangle
+        const rect1 = createRectangleWithImage(deviceWidth / 10, deviceHeight / 10, 1, imageBase64); // Blue background rectangle
 
-      const rect0 = createRectangle(1, 1, 1, 0xff0000, 1); // Red rectangle
-      rect0.position.set(0, 0, -1);
-      group.add(rect0)
-      rect1.position.set(deviceWidth / 10 / 2, -deviceHeight / 10 / 2, 0.1);
-      group.add(rect1)
+        const rect0 = createRectangle(1, 1, 1, 0xff0000, 1); // Red rectangle
+        rect0.position.set(0, 0, -1);
+        group.add(rect0)
+        rect1.position.set(deviceWidth / 10 / 2, -deviceHeight / 10 / 2, 0.1);
+        group.add(rect1)
 
-      let drawed = new Set()
-      let duplicatedDrawed = {}
-      objects.forEach(object => {
-        // "boundsInfo":{"bottom":2340,"left":0,"right":1080,"top":0}
-        interRender(object, drawed, duplicatedDrawed)
-      })
+        let drawed = new Set()
+        let duplicatedDrawed = {}
+        objects.forEach(object => {
+          // "boundsInfo":{"bottom":2340,"left":0,"right":1080,"top":0}
+          interRender(object, drawed, duplicatedDrawed, depthSpacingValue)
+        })
+        // 标记已经渲染过
+        hasInitializedObjects = true;
+      } else {
+        updatePositions(objects, depthSpacingValue);
+      }
     }
 
 
@@ -590,9 +708,11 @@
     // const rect2 = createRectangle(108, 234, 1, 0x00ff00)
     // rect2.position.set(12.6/2, -80.8/2, 12)
     // group.add(rect2)
-    function interRender (objectInfo, drawed, duplicatedDrawed) {
+    // 标记已渲染对象
+    const renderedObjectMap = new Map();
+    function interRender (objectInfo, drawed, duplicatedDrawed, depthSpacingValue) {
       if (objectInfo instanceof Array) {
-        objectInfo.forEach(obj => interRender(obj, drawed, duplicatedDrawed))
+        objectInfo.forEach(obj => interRender(obj, drawed, duplicatedDrawed, depthSpacingValue))
       } else {
         let object = objectInfo.root
         let boundsInfo = object.boundsInfo
@@ -638,8 +758,11 @@
         }
 
         // console.log('put rect', (boundsInfo.right - boundsInfo.left) * 0.1, (boundsInfo.bottom - boundsInfo.top) * 0.1, ' at ', boundsInfo.left * 0.1, boundsInfo.top * 0.1, 2 * object.depth)
-        rect.position.set(boundsInfo.left * 0.1 + width / 2, -(boundsInfo.top * 0.1 + height / 2), 1 * object.depth)
+        rect.position.set(boundsInfo.left * 0.1 + width / 2, -(boundsInfo.top * 0.1 + height / 2), depthSpacingValue * object.depth)
         rect.objectInfo = objectInfo
+        const uniqueId = key;
+        rect.userData = rect.userData || {}; // 确保 userData 对象存在
+        rect.userData.associatedId = uniqueId; // 存储唯一标识符
         group.add(rect)
       }
     }
@@ -697,20 +820,27 @@
 
     // 触发事件，暴露模块方法
     window.dispatchEvent(new CustomEvent('module-ready', {
-      detail: { rerender }
+      detail: {
+        rerender,
+        // 暴露一个方法来重置初始化标志，当 items/selectedItems 变化时调用
+        resetInitializationFlag: () => {
+          hasInitializedObjects = false;
+        }
+      },
     }));
   </script>
   <script>
-    let rerenderFunc = null
+    let rerenderFunc = null, resetInitFlagFunc = null
     // 非模块代码
     window.addEventListener('module-ready', (event) => {
-      const { rerender } = event.detail;
-      rerenderFunc = function (allItems, selectedItems, imageB64) {
+      const { rerender, resetInitializationFlag } = event.detail;
+      resetInitFlagFunc = resetInitializationFlag; // 保存引用
+      rerenderFunc = function (allItems, selectedItems, imageB64, depthSpacingValue) {
         allItems = allItems || []
         selectedItems = selectedItems || []
         let rebuildSelectedObjects = regenerateObjects(allItems, selectedItems)
         // console.log('绘制对象列表：', rebuildSelectedObjects)
-        rerender(rebuildSelectedObjects, imageB64)
+        rerender(rebuildSelectedObjects, imageB64, depthSpacingValue)
       }
 
       /**
@@ -741,6 +871,8 @@
       vuetify: new Vuetify(),
       data () {
         return {
+          searchText: '',
+          logs: [],
           showSnackbar: false,
           showInfo: '',
           showSnackColor: 'success',
@@ -805,6 +937,12 @@
           hisLoading: false,
           maxHisData: 25,
           canvasHeight: null,
+          sidebar: false,
+          depthSpacing: 1,
+          // 用于防抖的定时器ID
+          depthSpacingDebounceTimer: null,
+          // 防抖延迟时间 (毫秒)
+          DEBOUNCE_DELAY: 10,
         }
       },
       filters: {
@@ -813,6 +951,14 @@
         }
       },
       computed: {
+        filteredLogs: function () {
+          if (!this.searchText) {
+            return this.logs
+          }
+          return this.logs.filter(log => {
+            return log.message.indexOf(this.searchText) > -1
+          })
+        },
         connected: function () {
           return this.connectStatus == 'ready'
         },
@@ -874,6 +1020,12 @@
         }
       },
       watch: {
+        depthSpacing: {
+          handler: function (newVal, oldVal) {
+            rerenderFunc && rerenderFunc(this.items, this.selectedItems, this.imgBase64, newVal);
+          },
+          immediate: false
+        },
         selectedItems: {
           deep: true,
           immediate: true,
@@ -887,7 +1039,11 @@
               this.clearCanvas()
             }
             // 无论有无 都重绘一遍 清空无效节点
-            rerenderFunc && rerenderFunc(this.items, this.selectedItems, this.imgBase64)
+            console.log('current spacing', this.depthSpacing)
+            if (resetInitFlagFunc) {
+              resetInitFlagFunc()
+            }
+            rerenderFunc && rerenderFunc(this.items, this.selectedItems, this.imgBase64, this.depthSpacing)
           }
         },
         uiobjects: {
@@ -935,6 +1091,77 @@
         }
       },
       methods: {
+        checkColor: (message) => {
+          let checkRegex = /[\d:.]+\/(\w)/
+          if (checkRegex.test(message)) {
+            let result = checkRegex.exec(message)[1]
+            switch (result) {
+              case 'D':
+                return 'black'
+              case 'V':
+                return 'grey'
+              case 'I':
+                return 'green'
+              case 'E':
+                return 'red'
+              case 'W':
+                return 'blue'
+            }
+          }
+          return 'black'
+        },
+        /**
+         * 处理滑块拖动过程中的输入
+         * 这里可以实时更新显示的数值，但不触发昂贵的渲染
+         */
+        onDepthSpacingInput (value) {
+          // 可以在这里添加实时预览逻辑（如果需要），但不渲染3D
+          // 例如，可以更新一个临时的显示值
+          // this.tempDepthSpacingDisplay = value;
+
+          // 清除之前的防抖定时器
+          if (this.depthSpacingDebounceTimer) {
+            clearTimeout(this.depthSpacingDebounceTimer);
+          }
+          // 启动新的防抖定时器
+          this.depthSpacingDebounceTimer = setTimeout(() => {
+            this.applyDepthSpacingChange(value);
+          }, this.DEBOUNCE_DELAY);
+        },
+        /**
+         * 处理滑块拖动结束或值改变事件
+         * 立即应用更改并渲染
+         */
+        onDepthSpacingChange (value) {
+          // 清除可能存在的防抖定时器，因为用户已经停止操作
+          if (this.depthSpacingDebounceTimer) {
+            clearTimeout(this.depthSpacingDebounceTimer);
+            this.depthSpacingDebounceTimer = null;
+          }
+          // 立即应用更改
+          this.applyDepthSpacingChange(value);
+        },
+        /**
+         * 应用深度间隔更改并触发3D渲染
+         * @param {number} value - 新的深度间隔值
+         */
+        applyDepthSpacingChange (value) {
+          console.log("应用深度间隔更改:", value);
+          // 触发3D渲染
+          if (this.draw3DInfo && this.items && this.items.length > 0 && this.selectedItems && this.selectedItems.length > 0) {
+            // 使用更新后的 renderDepthSpacing 值
+            rerenderFunc && rerenderFunc(this.items, this.selectedItems, this.imgBase64, value);
+          }
+        },
+        handleLog: function (logData) {
+          this.logs.push({
+            timestamp: new Date(),
+            message: logData.message.log
+          })
+        },
+        clearLogs: function () {
+          this.logs = []
+        },
         openTarget: function (targetId) {
           if (!targetId) {
             targetId = this.itemId
@@ -1028,6 +1255,14 @@
               path: this.executePath
             }
           }).then(() => this.requesting = false)
+        },
+        sendLog: function () {
+          if (!this.connected) {
+            return
+          }
+          wsApi.request('log_dispatcher', {
+            data: '测试发送日志'
+          })
         },
         sendFile: function () {
           if (!this.connected || this.requesting || !this.saveFileContent || !this.saveFileName || !this.saveFilePath) {
@@ -1202,9 +1437,9 @@
         },
         clearCanvas: async function () {
           if (this.$el && this.$el.canvas) {
-            this.$el.canvas.width = this.$el.canvas.width
-            this.$el.canvas.height = canvasWidth / deviceWidth * deviceHeight
-            let scale = canvasWidth / deviceWidth
+            this.$el.canvas.width = canvasHeight / deviceHeight * deviceWidth
+            this.$el.canvas.height = this.$el.canvas.height
+            let scale = canvasHeight / deviceHeight
             let _this = this
             if (_this.$el.drawImg && _this.$el.drawImg.src && _this.drawImageCanvas) {
               _this.$el.ctx.drawImage(_this.$el.drawImg, 0, 0, _this.$el.canvas.width, _this.$el.canvas.height)
@@ -1248,8 +1483,9 @@
           }
         },
         findTarget: async function (x, y, showMenu) {
-          let realX = x * deviceWidth / canvasWidth
-          let realY = y * deviceWidth / canvasWidth
+          let scale = deviceHeight / canvasHeight
+          let realX = x * scale
+          let realY = y * scale
           // console.log('实际坐标：', `${realX}, ${realY}`)
           let findObjects = this.drawedObjects.filter(({ root: r }) => {
             let { left, top, right, bottom } = r.boundsInfo
@@ -1366,6 +1602,9 @@
           this.showSnackColor = 'red'
           this.showSnackTimeout = timeout
         },
+        toggleSidebar () {
+          this.sidebar = !this.sidebar;
+        },
       },
       mounted () {
         let storeServerUrl = localStorage.getItem('wsServerUrl')
@@ -1407,7 +1646,7 @@
           if (_this.findTargetObj) {
             return
           }
-          let scale = deviceWidth / canvasWidth
+          let scale = deviceHeight / canvasHeight
           let realX = Math.ceil(x * scale)
           let realY = Math.ceil(y * scale)
           _this.devicePos = { x: realX, y: realY }
@@ -1427,10 +1666,11 @@
           _this.buildItems(_this.openAll)
         }, 10)
         function recalculate () {
-          canvasWidth = Math.min(600, window.innerWidth - 20)
+          canvasHeight = window.innerHeight - 50
+          let canvasWidth = canvasHeight / deviceHeight * deviceWidth
           console.log('计算canvas width:', canvasWidth)
           _this.$el.canvas.width = canvasWidth
-          _this.$el.canvas.height = canvasWidth / deviceWidth * deviceHeight
+          _this.$el.canvas.height = canvasHeight
           _this.canvasHeight = _this.$el.canvas.height
           if (_this.$el.drawImg && _this.$el.drawImg.src && _this.drawImageCanvas) {
             _this.$el.ctx.drawImage(_this.$el.drawImg, 0, 0, _this.$el.canvas.width, _this.$el.canvas.height)

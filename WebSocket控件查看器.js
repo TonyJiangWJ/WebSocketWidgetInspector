@@ -54,6 +54,8 @@ let socketServer = plugin_websocket.createServer(8212, {
 
   onMessage: function (conn, message) {
     // 接收消息并根据消息结构进行处理
+    // let address = conn.getRemoteSocketAddress() + ''
+    // console.log('接受客户端消息：' + address + ' => ' + message)
     handleRequest(conn, message)
   },
 
@@ -153,22 +155,26 @@ const requestDispatcher = {
       })
     }))
   },
-  log_dispatcher: (conn, requestData, msg) => {
-    console.log('接收转发日志：', JSON.stringify(requestData))
-    console.log('当前接入客户端数量：', connectedClients.length)
+  hello: (conn, requestData, msg) => {
+    console.log('接收客户端hello：' + JSON.stringify(requestData))
+    conn.send(JSON.stringify({ type: 'hello', data: { message: 'hello, this is plugin server' } }))
+  },
+  log: (conn, requestData, msg) => {
+    // console.log('接收转发日志：', JSON.stringify(requestData))
+    // console.log('当前接入客户端数量：', connectedClients.length)
     let currentAddress = conn.getRemoteSocketAddress() + ''
     connectedClients.forEach(oc => {
       if (oc.address == currentAddress) {
         return
       }
       if (oc.conn.isOpen()) {
-        console.log('dispatch log to:', oc.address)
+        // console.log('dispatch log to:', oc.address)
         oc.conn.send(JSON.stringify({
           type: 'log_dispatcher',
           message: requestData.data
         }))
       } else {
-        console.log(oc.address, 'is not open')
+        // console.log(oc.address, 'is not open')
       }
     })
   }
@@ -186,6 +192,7 @@ function handleRequest (conn, message) {
     if (handler) {
       handler(conn, requestData, message)
     } else {
+      console.log('当前操作类型未定义：', requestData.type)
       conn.send(wrapResp(requestData, 'error', '当前操作类型未定义：' + requestData.type))
     }
   } catch (e) {
@@ -336,7 +343,7 @@ function requestWidgetInfos () {
     treeNodeBuilder = new UiObjectTreeBuilder(null)
   }
 
-  function buildTreeNode() {
+  function buildTreeNode () {
     if (supportOld) {
       return treeNodeBuilder.buildTreeNode()
     } else {

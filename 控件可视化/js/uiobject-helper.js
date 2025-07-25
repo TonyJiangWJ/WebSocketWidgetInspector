@@ -7,7 +7,7 @@
  */
 let allKey = []
 let allObject = []
-let canvasWidth = 400
+let canvasHeight = 400
 let deviceWidth = 1080
 let deviceHeight = 2340
 let idChecker = new Set()
